@@ -17,11 +17,24 @@ if (!publishedPackage) {
 const rootPackage = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8')
 );
+const changesetConfig = JSON.parse(
+  await readFile(new URL('../.changeset/config.json', import.meta.url), 'utf8')
+);
+const baseBranch = changesetConfig.baseBranch;
+if (typeof baseBranch !== 'string' || baseBranch.length === 0) {
+  throw new Error('.changeset/config.json must define baseBranch');
+}
 if (rootPackage.version !== publishedPackage.version) {
   throw new Error(
     `Published version ${publishedPackage.version} does not match package.json ${rootPackage.version}`
   );
 }
+
+await waitForPublishedPackage(
+  packageName,
+  publishedPackage.version,
+  rootPackage.publishConfig?.registry ?? 'https://registry.npmjs.org/'
+);
 
 run('yarn', ['expo-example:install:published']);
 run('npm', ['--prefix', 'examples/expo-example', 'run', 'typecheck']);
@@ -74,7 +87,7 @@ const pullRequest = await github(`/repos/${repository}/pulls`, {
   body: {
     title: `chore(expo-example): use SDK v${version}`,
     head: branch,
-    base: 'master',
+    base: baseBranch,
     body: [
       `Updates the standalone Expo example to the registry-published ${packageName}@${version}.`,
       '',
@@ -108,6 +121,59 @@ function run(command, args) {
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed`);
   }
+}
+
+async function waitForPublishedPackage(name, expectedVersion, registry) {
+  const retryDelays = [0, 5_000, 10_000, 20_000, 40_000, 60_000];
+  let lastError = '';
+
+  for (const [index, retryDelay] of retryDelays.entries()) {
+    if (retryDelay > 0) {
+      process.stdout.write(
+        `Waiting ${retryDelay / 1_000}s for ${name}@${expectedVersion} to propagate...\n`
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+
+    const result = spawnSync(
+      'npm',
+      [
+        'view',
+        `${name}@${expectedVersion}`,
+        'version',
+        '--json',
+        '--registry',
+        registry,
+      ],
+      {
+        cwd: new URL('..', import.meta.url),
+        encoding: 'utf8',
+      }
+    );
+
+    if (result.status === 0) {
+      try {
+        if (JSON.parse(result.stdout) === expectedVersion) {
+          process.stdout.write(
+            `${name}@${expectedVersion} is available from npm.\n`
+          );
+          return;
+        }
+      } catch (error) {
+        lastError = `Invalid npm response: ${error.message}`;
+      }
+    } else {
+      lastError = result.stderr.trim() || `npm view exited ${result.status}`;
+    }
+
+    process.stdout.write(
+      `npm propagation check ${index + 1}/${retryDelays.length} did not find ${name}@${expectedVersion}.\n`
+    );
+  }
+
+  throw new Error(
+    `${name}@${expectedVersion} did not become available from npm: ${lastError}`
+  );
 }
 
 async function github(path, options = {}) {

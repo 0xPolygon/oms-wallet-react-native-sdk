@@ -39,6 +39,11 @@ that omit it.
 5. After publication, the workflow opens a follow-up pull request that updates the standalone Expo
    example to the registry-published version and refreshes its npm lockfile.
 
+Publication and the Expo follow-up run as separate jobs. If the follow-up fails, the successful npm
+publication remains visible as successful and the workflow identifies the Expo update as the failed
+step. The follow-up waits for the exact package version to become visible on npm before installing
+and verifying it.
+
 The release workflow uses a GitHub App token and Changesets' `github-api` commit mode. Release
 commits and follow-up Expo commits must remain GitHub-verified; do not fall back to unsigned local
 commits.
