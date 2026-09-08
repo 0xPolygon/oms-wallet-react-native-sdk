@@ -77,7 +77,8 @@ and Expo apps.
 ## Tech Stack
 
 - **Language:** TypeScript (React Native Turbo Module; native layers in Kotlin + Objective-C/Swift)
-- **Package manager:** Yarn 4 (Berry) with workspaces; `examples/expo-example` uses `npm` standalone
+- **Package manager:** Yarn 4.18.0 (Berry) with workspaces; `examples/expo-example` uses `npm`
+  standalone
 - **Build tool:** `react-native-builder-bob` + Turbo
 - **Linting:** ESLint 9 flat config + Prettier
 - **Node version:** v24.13.0 (see `.nvmrc`)
@@ -133,6 +134,8 @@ plan for when automated tests are added.
 - Publishing is CI-only through Changesets and npm OIDC trusted publishing. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
   pins normally remain equal, but do not manufacture native releases to match npm-only changes.
+- Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
+  blocks third-party lifecycle scripts and Git-hosted dependencies unless explicitly approved.
 
 ## CI/CD
 

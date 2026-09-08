@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js v24.13.0 (use `.nvmrc` — `nvm use` or `fnm use`)
-- Yarn 4 (`corepack enable` then `yarn --version`)
+- Yarn 4.18.0 (`corepack enable` then `yarn --version`)
 - For Android builds: Android SDK, `ANDROID_HOME` set
 - For iOS builds: Xcode, CocoaPods, Ruby (`bundle install` inside the example)
 
@@ -15,6 +15,11 @@ cd oms-wallet-react-native-sdk
 yarn install
 yarn prepare        # build lib/
 ```
+
+Yarn rejects registry releases published less than 24 hours ago, except for approved first-party
+scopes. It also blocks third-party lifecycle scripts and Git-hosted dependencies unless they are
+explicitly approved in `.yarnrc.yml` and the root package metadata. Do not bypass these controls
+without reviewing the dependency and documenting why the exception is safe.
 
 ## Repo structure
 
