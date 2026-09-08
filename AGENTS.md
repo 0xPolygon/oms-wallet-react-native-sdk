@@ -72,7 +72,7 @@ and Expo apps.
 - `examples/trails-actions-example/` — Trails demo with redirect auth
 - `examples/expo-example/` — standalone Expo example (not in Yarn workspace; uses `npm`)
 - `.changeset/` — release intent and single-root-package Changesets configuration
-- `.github/workflows/` — CI, Changeset enforcement, release, CodeQL, and dependency review
+- `.github/workflows/` — CI, Changeset enforcement, release, and dependency review
 
 ## Tech Stack
 
@@ -142,7 +142,9 @@ plan for when automated tests are added.
 - **`quick-checks.yml`** — fast verification on pushes to non-master branches.
 - **`release.yml`** — verifies `master`, opens release pull requests, publishes through npm OIDC,
   and opens the post-publish Expo example update.
-- **`codeql.yml`** — JavaScript/TypeScript, Kotlin, and Swift analysis.
+- **GitHub CodeQL default setup** — GitHub-managed Actions, JavaScript/TypeScript, and Ruby
+  analysis. Kotlin and Swift CodeQL are intentionally omitted to avoid duplicating the required
+  native builds on every pull request.
 - **`dependency-review.yml`** — blocks newly introduced vulnerable dependencies.
 
 Pull requests run full CI, including native builds. If the native layer changed, make sure the
