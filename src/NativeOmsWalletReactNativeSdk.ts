@@ -17,6 +17,7 @@ export type OmsNativeWalletAccount = {
   type: string;
   address: string;
   reference: string | null;
+  keyOrigin: string;
 };
 
 export type OmsNativeWalletActivationResult = {
@@ -28,7 +29,7 @@ export type OmsNativePendingWalletSelection = {
   id: string;
   walletType: string;
   wallets: OmsNativeWalletAccount[];
-  credential: OmsNativeCredentialInfo;
+  credential: OmsNativeWalletCredential;
 };
 
 export type OmsNativeCompleteAuthResult = {
@@ -36,7 +37,7 @@ export type OmsNativeCompleteAuthResult = {
   walletAddress: string | null;
   wallet?: OmsNativeWalletAccount;
   wallets: OmsNativeWalletAccount[];
-  credential: OmsNativeCredentialInfo;
+  credential: OmsNativeWalletCredential;
   pendingSelection?: OmsNativePendingWalletSelection;
 };
 
@@ -252,6 +253,7 @@ export type OmsNativeFeeOption = {
 
 export type OmsNativeFeeOptionSelection = {
   token: string;
+  index: number | null;
 };
 
 export type OmsNativeFeeOptionWithBalance = {
@@ -269,10 +271,33 @@ export type OmsNativeFeeOptionSelectionRequest = {
   options: OmsNativeFeeOptionWithBalance[];
 };
 
-export type OmsNativeCredentialInfo = {
+export type OmsNativeWalletCredential = {
   credentialId: string;
   expiresAt: string;
   isCaller: boolean;
+};
+
+export type OmsNativeRemoteCredentialMetadata = {
+  appUrl: string;
+  appName: string;
+  appLogoUrl: string;
+  custom: CodegenTypes.UnsafeObject;
+};
+
+export type OmsNativeSmartSessionGrant = {
+  kind: string;
+  token: string | null;
+  to: string | null;
+  limit: string;
+  cumulative: boolean | null;
+};
+
+export type OmsNativeAccessGrant = {
+  type: string;
+  credential: OmsNativeWalletCredential;
+  sessionId: string | null;
+  metadata: OmsNativeRemoteCredentialMetadata | null;
+  grants: OmsNativeSmartSessionGrant[];
 };
 
 export type OmsNativeAccessPage = {
@@ -280,9 +305,65 @@ export type OmsNativeAccessPage = {
   cursor: string | null;
 };
 
-export type OmsNativeListAccessResponse = {
-  credentials: OmsNativeCredentialInfo[];
+export type OmsNativeAccessGrantPage = {
+  grants: OmsNativeAccessGrant[];
   page: OmsNativeAccessPage | null;
+};
+
+export type OmsNativeWalletImportRecipientKey = {
+  keyId: string;
+  cipherSuite: string;
+  publicKey: string;
+};
+
+export type OmsNativeAuthorizedRemoteAccess = {
+  walletId: string;
+  sessionId: string;
+  expiresAt: string;
+};
+
+export type OmsNativeRemoteAccessSession = {
+  sessionId: string;
+  walletId: string;
+  signerAddress: string;
+  grants: OmsNativeSmartSessionGrant[];
+  chainId: number;
+  expiresAt: string;
+};
+
+export type OmsNativeSmartSessionGrantUsage = {
+  grant: OmsNativeSmartSessionGrant;
+  used: string | null;
+};
+
+export type OmsNativeSolanaBalance = {
+  assetType: string;
+  network: string;
+  accountAddress: string;
+  tokenProgram: string | null;
+  mintAddress: string | null;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance: string;
+  formattedBalance: string;
+  imageUrl: string | null;
+  metadataUri: string | null;
+  verificationStatus: string;
+  verificationSource: string;
+  priceUSD: string | null;
+  balanceUSD: string | null;
+};
+
+export type OmsNativeSolanaNetworkError = {
+  network: string;
+  reason: string;
+};
+
+export type OmsNativeSolanaBalancesResult = {
+  status: number;
+  balances: OmsNativeSolanaBalance[];
+  errors: OmsNativeSolanaNetworkError[];
 };
 
 export interface Spec extends TurboModule {
@@ -340,6 +421,26 @@ export interface Spec extends TurboModule {
     walletType: string | null,
     reference: string | null
   ): Promise<OmsNativeWalletActivationResult>;
+  importWallet(
+    clientId: string,
+    walletType: string,
+    privateKey: string | null,
+    privateKeyBytesJson: string | null,
+    reference: string | null
+  ): Promise<OmsNativeWalletActivationResult>;
+  getWalletImportRecipientKey(
+    clientId: string,
+    cipherSuite: string
+  ): Promise<OmsNativeWalletImportRecipientKey>;
+  importEncryptedWallet(
+    clientId: string,
+    walletType: string,
+    keyId: string,
+    cipherSuite: string,
+    encapsulatedKey: string,
+    ciphertext: string,
+    reference: string | null
+  ): Promise<OmsNativeWalletActivationResult>;
   selectWalletForPendingSelection(
     clientId: string,
     pendingSelectionId: string,
@@ -356,6 +457,7 @@ export interface Spec extends TurboModule {
     chainId: string,
     message: string
   ): Promise<string>;
+  signSolanaMessage(clientId: string, message: string): Promise<string>;
   signTypedData(
     clientId: string,
     chainId: string,
@@ -389,9 +491,24 @@ export interface Spec extends TurboModule {
     statusPollingFastIntervalMs: string | null,
     statusPollingFastPollCount: string | null
   ): Promise<OmsNativeSendTransactionResponse>;
+  sendSolanaTransfer(
+    clientId: string,
+    network: string,
+    asset: string,
+    to: string,
+    amount: string,
+    mode: string | null,
+    feeOptionSelectorId: string | null,
+    waitForStatus: boolean,
+    statusPollingTimeoutMs: string | null,
+    statusPollingIntervalMs: string | null,
+    statusPollingFastIntervalMs: string | null,
+    statusPollingFastPollCount: string | null
+  ): Promise<OmsNativeSendTransactionResponse>;
   respondToFeeOptionSelection(
     requestId: string,
     selectionToken: string | null,
+    selectionIndex: string | null,
     errorMessage: string | null
   ): Promise<void>;
   getTransactionStatus(
@@ -406,9 +523,18 @@ export interface Spec extends TurboModule {
     clientId: string,
     paramsJson: string
   ): Promise<OmsNativeTransactionHistoryResult>;
+  getSolanaBalances(
+    clientId: string,
+    paramsJson: string
+  ): Promise<OmsNativeSolanaBalancesResult>;
   verifyMessageSignature(
     clientId: string,
     chainId: string,
+    message: string,
+    signature: string
+  ): Promise<boolean>;
+  verifySolanaMessageSignature(
+    clientId: string,
     message: string,
     signature: string
   ): Promise<boolean>;
@@ -423,16 +549,43 @@ export interface Spec extends TurboModule {
     ttlSeconds: string | null,
     customClaimsJson: string | null
   ): Promise<string>;
+  inspectRemoteCredential(
+    clientId: string,
+    credentialId: string
+  ): Promise<OmsNativeRemoteCredentialMetadata>;
+  authorizeRemoteAccess(
+    clientId: string,
+    credentialId: string,
+    chainId: string,
+    grantsJson: string,
+    expiresAt: string,
+    sessionId: string | null
+  ): Promise<OmsNativeAuthorizedRemoteAccess>;
   listAccess(
     clientId: string,
-    pageSize: string | null
-  ): Promise<OmsNativeCredentialInfo[]>;
+    pageSize: string | null,
+    type: string | null
+  ): Promise<OmsNativeAccessGrant[]>;
   listAccessPage(
     clientId: string,
     pageSize: string | null,
-    cursor: string | null
-  ): Promise<OmsNativeListAccessResponse>;
-  revokeAccess(clientId: string, targetCredentialId: string): Promise<void>;
+    cursor: string | null,
+    type: string | null
+  ): Promise<OmsNativeAccessGrantPage>;
+  getRemoteAccessSession(
+    clientId: string,
+    sessionId: string
+  ): Promise<OmsNativeRemoteAccessSession>;
+  getRemoteAccessSessionUsage(
+    clientId: string,
+    sessionId: string,
+    chainId: string
+  ): Promise<OmsNativeSmartSessionGrantUsage[]>;
+  revokeAccess(
+    clientId: string,
+    credentialId: string,
+    sessionId: string | null
+  ): Promise<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>(

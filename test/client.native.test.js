@@ -48,6 +48,7 @@ function wallet(id = 'wallet-1') {
     type: 'ethereum',
     address: `0x${id.replace(/\D/g, '').padStart(40, '0')}`,
     reference: null,
+    keyOrigin: 'enclave',
   };
 }
 
@@ -216,6 +217,26 @@ function loadClient(overrides = {}) {
     'createWallet',
     overrides.createWallet ?? (async () => walletActivationResult())
   );
+  native.importWallet = makeRecorder(
+    calls,
+    'importWallet',
+    overrides.importWallet ?? (async () => walletActivationResult())
+  );
+  native.getWalletImportRecipientKey = makeRecorder(
+    calls,
+    'getWalletImportRecipientKey',
+    overrides.getWalletImportRecipientKey ??
+      (async (_clientId, cipherSuite) => ({
+        keyId: 'key-1',
+        cipherSuite,
+        publicKey: 'cHVibGljLWtleQ==',
+      }))
+  );
+  native.importEncryptedWallet = makeRecorder(
+    calls,
+    'importEncryptedWallet',
+    overrides.importEncryptedWallet ?? (async () => walletActivationResult())
+  );
   native.selectWalletForPendingSelection = makeRecorder(
     calls,
     'selectWalletForPendingSelection',
@@ -244,6 +265,22 @@ function loadClient(overrides = {}) {
         statusResolution: 'resolved',
       }))
   );
+  native.signSolanaMessage = makeRecorder(
+    calls,
+    'signSolanaMessage',
+    overrides.signSolanaMessage ?? (async () => 'solana-signature')
+  );
+  native.sendSolanaTransfer = makeRecorder(
+    calls,
+    'sendSolanaTransfer',
+    overrides.sendSolanaTransfer ??
+      (async () => ({
+        txnId: 'solana-txn-1',
+        status: 'pending',
+        txnHash: null,
+        statusResolution: 'not-requested',
+      }))
+  );
   native.getBalances = makeRecorder(
     calls,
     'getBalances',
@@ -261,6 +298,12 @@ function loadClient(overrides = {}) {
     overrides.getTransactionHistory ??
       (async () => ({ status: 200, page: null, transactions: [] }))
   );
+  native.getSolanaBalances = makeRecorder(
+    calls,
+    'getSolanaBalances',
+    overrides.getSolanaBalances ??
+      (async () => ({ status: 200, balances: [], errors: [] }))
+  );
   native.getTransactionStatus = makeRecorder(
     calls,
     'getTransactionStatus',
@@ -271,7 +314,65 @@ function loadClient(overrides = {}) {
     calls,
     'listAccessPage',
     overrides.listAccessPage ??
-      (async () => ({ credentials: [credential()], page: null }))
+      (async () => ({
+        grants: [{ type: 'direct', credential: credential(), grants: [] }],
+        page: null,
+      }))
+  );
+  native.listAccess = makeRecorder(
+    calls,
+    'listAccess',
+    overrides.listAccess ??
+      (async () => [{ type: 'direct', credential: credential(), grants: [] }])
+  );
+  native.inspectRemoteCredential = makeRecorder(
+    calls,
+    'inspectRemoteCredential',
+    overrides.inspectRemoteCredential ??
+      (async () => ({
+        appUrl: 'https://app.example.com',
+        appName: 'Example',
+        appLogoUrl: 'https://app.example.com/logo.png',
+        custom: {},
+      }))
+  );
+  native.authorizeRemoteAccess = makeRecorder(
+    calls,
+    'authorizeRemoteAccess',
+    overrides.authorizeRemoteAccess ??
+      (async () => ({
+        walletId: 'wallet-1',
+        sessionId: 'session-1',
+        expiresAt: '2026-06-17T00:00:00.000Z',
+      }))
+  );
+  native.getRemoteAccessSession = makeRecorder(
+    calls,
+    'getRemoteAccessSession',
+    overrides.getRemoteAccessSession ??
+      (async () => ({
+        sessionId: 'session-1',
+        walletId: 'wallet-1',
+        signerAddress: '0xsigner',
+        grants: [],
+        chainId: 137,
+        expiresAt: '2026-06-17T00:00:00.000Z',
+      }))
+  );
+  native.getRemoteAccessSessionUsage = makeRecorder(
+    calls,
+    'getRemoteAccessSessionUsage',
+    overrides.getRemoteAccessSessionUsage ?? (async () => [])
+  );
+  native.revokeAccess = makeRecorder(
+    calls,
+    'revokeAccess',
+    overrides.revokeAccess ?? (async () => undefined)
+  );
+  native.verifySolanaMessageSignature = makeRecorder(
+    calls,
+    'verifySolanaMessageSignature',
+    overrides.verifySolanaMessageSignature ?? (async () => true)
   );
   native.respondToFeeOptionSelection = makeRecorder(
     calls,
@@ -339,9 +440,12 @@ test('creates a native client and routes instance calls with its client id', asy
 });
 
 test('exposes supported network metadata aligned with native SDKs', () => {
-  const { Networks, findNetworkById, findNetworkByName } = require(
-    networksModulePath
-  );
+  const {
+    Networks,
+    SolanaNetworks,
+    findNetworkById,
+    findNetworkByName,
+  } = require(networksModulePath);
 
   assert.equal(
     Networks.avalanche.explorerUrl,
@@ -355,6 +459,54 @@ test('exposes supported network metadata aligned with native SDKs', () => {
   assert.equal(findNetworkById(137), Networks.polygon);
   assert.equal(findNetworkByName(' Polygon '), Networks.polygon);
   assert.equal(Object.isFrozen(Networks.polygon), true);
+  assert.equal(SolanaNetworks.devnet, 'solana:devnet');
+  assert.equal(SolanaNetworks.mainnet, 'solana:mainnet');
+  assert.equal(Object.isFrozen(SolanaNetworks), true);
+});
+
+test('routes wallet import through the native attested-import bridge', async () => {
+  const { calls, client } = loadClient();
+  const oms = createOms(client);
+
+  await oms.wallet.importWallet({
+    type: 'ethereum',
+    privateKey: '0xprivate-key',
+    reference: 'primary',
+  });
+  await oms.wallet.importWallet({
+    type: 'solana',
+    privateKey: new Uint8Array([1, 2, 255]),
+  });
+  const recipient = await oms.wallet.getWalletImportRecipientKey({
+    cipherSuite: 'p256-sha256-aes256gcm',
+  });
+  await oms.wallet.importEncryptedWallet({
+    type: 'solana',
+    keyMaterial: {
+      keyId: recipient.keyId,
+      cipherSuite: recipient.cipherSuite,
+      encapsulatedKey: 'ZW5jYXBzdWxhdGVk',
+      ciphertext: 'Y2lwaGVydGV4dA==',
+    },
+  });
+
+  assert.deepEqual(calls.importWallet, [
+    ['oms-wallet', 'ethereum', '0xprivate-key', null, 'primary'],
+    ['oms-wallet', 'solana', null, '[1,2,255]', null],
+  ]);
+  assert.deepEqual(calls.getWalletImportRecipientKey[0], [
+    'oms-wallet',
+    'p256-sha256-aes256gcm',
+  ]);
+  assert.deepEqual(calls.importEncryptedWallet[0], [
+    'oms-wallet',
+    'solana',
+    'key-1',
+    'p256-sha256-aes256gcm',
+    'ZW5jYXBzdWxhdGVk',
+    'Y2lwaGVydGV4dA==',
+    null,
+  ]);
 });
 
 test('selects the first fee option covered by the available balance', async () => {
@@ -714,6 +866,184 @@ test('serializes indexer balance and transaction history params for native', asy
   });
 });
 
+test('routes Solana signing, transfers, verification, and balances', async () => {
+  const nativeBalance = {
+    assetType: 'fungible-token',
+    network: 'solana:devnet',
+    accountAddress: 'solana-account',
+    tokenProgram: 'token-2022',
+    mintAddress: 'mint-address',
+    name: 'Token',
+    symbol: 'TOK',
+    decimals: 6,
+    balance: '1000000',
+    formattedBalance: '1',
+    imageUrl: null,
+    metadataUri: null,
+    verificationStatus: 'verified',
+    verificationSource: 'jupiter',
+    priceUSD: null,
+    balanceUSD: null,
+  };
+  const { calls, client } = loadClient({
+    getSolanaBalances: async () => ({
+      status: 200,
+      balances: [nativeBalance],
+      errors: [{ network: 'solana:mainnet', reason: 'unavailable' }],
+    }),
+  });
+  const oms = createOms(client);
+
+  assert.equal(
+    await oms.wallet.signSolanaMessage({ message: 'hello' }),
+    'solana-signature'
+  );
+  assert.equal(
+    await oms.wallet.isValidSolanaMessageSignature({
+      message: 'hello',
+      signature: 'solana-signature',
+    }),
+    true
+  );
+  await oms.wallet.sendSolanaTransfer({
+    network: 'solana:devnet',
+    asset: 'SOL',
+    to: 'recipient',
+    amount: '1000',
+    mode: 'relayer',
+    waitForStatus: false,
+  });
+  const balances = await oms.indexer.getSolanaBalances({
+    walletAddress: 'solana-account',
+    networks: ['solana:devnet'],
+    includeMetadata: false,
+  });
+
+  assert.deepEqual(calls.sendSolanaTransfer[0].slice(0, 9), [
+    'oms-wallet',
+    'solana:devnet',
+    'SOL',
+    'recipient',
+    '1000',
+    'relayer',
+    null,
+    false,
+    null,
+  ]);
+  assert.deepEqual(JSON.parse(calls.getSolanaBalances[0][1]), {
+    walletAddress: 'solana-account',
+    networks: ['solana:devnet'],
+    includeMetadata: false,
+  });
+  assert.deepEqual(balances.balances[0], {
+    ...nativeBalance,
+    imageUrl: undefined,
+    metadataUri: undefined,
+    priceUSD: undefined,
+    balanceUSD: undefined,
+  });
+  assert.deepEqual(balances.errors, [
+    { network: 'solana:mainnet', reason: 'unavailable' },
+  ]);
+});
+
+test('hydrates direct and remote access grants and routes smart-session calls', async () => {
+  const remoteGrant = {
+    type: 'remote',
+    credential: credential('credential-remote'),
+    sessionId: 'session-1',
+    metadata: {
+      appUrl: 'https://app.example.com',
+      appName: 'Example',
+      appLogoUrl: 'https://app.example.com/logo.png',
+      custom: { environment: 'sandbox' },
+    },
+    grants: [
+      {
+        kind: 'erc20Transfer',
+        token: '0xtoken',
+        to: null,
+        limit: '100',
+        cumulative: true,
+      },
+    ],
+  };
+  const { calls, client } = loadClient({
+    listAccess: async () => [remoteGrant],
+    listAccessPage: async () => ({
+      grants: [remoteGrant],
+      page: { limit: 20, cursor: '' },
+    }),
+    getRemoteAccessSession: async () => ({
+      sessionId: 'session-1',
+      walletId: 'wallet-1',
+      signerAddress: '0xsigner',
+      grants: remoteGrant.grants,
+      chainId: 137,
+      expiresAt: '2026-06-17T00:00:00.000Z',
+    }),
+    getRemoteAccessSessionUsage: async () => [
+      { grant: remoteGrant.grants[0], used: '25' },
+    ],
+  });
+  const oms = createOms(client);
+  const { Networks } = require(networksModulePath);
+
+  const grants = await oms.wallet.listAccess({ pageSize: 20, type: 'remote' });
+  assert.deepEqual(grants, [
+    {
+      type: 'remote',
+      ...credential('credential-remote'),
+      sessionId: 'session-1',
+      metadata: remoteGrant.metadata,
+      grants: [
+        {
+          kind: 'erc20Transfer',
+          token: '0xtoken',
+          to: undefined,
+          limit: '100',
+          cumulative: true,
+        },
+      ],
+    },
+  ]);
+
+  const pages = [];
+  for await (const page of oms.wallet.listAccessPages({ type: 'remote' })) {
+    pages.push(page);
+  }
+  assert.equal(pages.length, 1);
+
+  await oms.wallet.inspectRemoteCredential({
+    credentialId: 'credential-remote',
+  });
+  await oms.wallet.authorizeRemoteAccess({
+    credentialId: 'credential-remote',
+    network: Networks.polygon,
+    grants: [{ kind: 'nativeTransfer', to: '0xrecipient', limit: '10' }],
+    expiresAt: '2026-06-17T00:00:00.000Z',
+  });
+  await oms.wallet.getRemoteAccessSession({ sessionId: 'session-1' });
+  await oms.wallet.getRemoteAccessSessionUsage({
+    sessionId: 'session-1',
+    network: Networks.polygon,
+  });
+  await oms.wallet.revokeAccess({
+    credentialId: 'credential-remote',
+    sessionId: 'session-1',
+  });
+
+  assert.deepEqual(calls.listAccess[0], ['oms-wallet', '20', 'remote']);
+  assert.deepEqual(JSON.parse(calls.authorizeRemoteAccess[0][3]), [
+    { kind: 'nativeTransfer', to: '0xrecipient', limit: '10' },
+  ]);
+  assert.deepEqual(calls.revokeAccess[0], [
+    'oms-wallet',
+    'credential-remote',
+    'session-1',
+  ]);
+});
+
 test('normalizes optional native nulls at public model boundaries', async () => {
   const contractBalance = {
     contractType: 'ERC20',
@@ -820,7 +1150,7 @@ test('normalizes optional native nulls at public model boundaries', async () => 
       statusResolution: 'timed-out',
     }),
     listAccessPage: async () => ({
-      credentials: [credential()],
+      grants: [{ type: 'direct', credential: credential(), grants: [] }],
       page: { limit: null, cursor: null },
     }),
   });
@@ -846,7 +1176,7 @@ test('normalizes optional native nulls at public model boundaries', async () => 
     txnHash: undefined,
   });
   assert.deepEqual(await oms.wallet.listAccessPage(), {
-    credentials: [credential()],
+    grants: [{ type: 'direct', ...credential() }],
     page: { limit: undefined, cursor: undefined },
   });
 
@@ -934,7 +1264,7 @@ test('round-trips fee option selection token from native request', async () => {
       value: '100',
       displayValue: '0.0000000000000001',
     },
-    selection: { token: 'canonical-selection-token' },
+    selection: { token: 'canonical-selection-token', index: null },
     balance: null,
     available: '1',
     availableRaw: '1000000000000000000',
@@ -1000,7 +1330,7 @@ test('round-trips fee option selection token from native request', async () => {
         value: '100',
         displayValue: '0.0000000000000001',
       },
-      selection: { token: 'canonical-selection-token' },
+      selection: { token: 'canonical-selection-token', index: undefined },
       balance: undefined,
       available: '1',
       availableRaw: '1000000000000000000',
@@ -1010,6 +1340,7 @@ test('round-trips fee option selection token from native request', async () => {
   assert.deepEqual(calls.respondToFeeOptionSelection[0], [
     'fee-request-1',
     'canonical-selection-token',
+    null,
     null,
   ]);
   assert.deepEqual(calls.sendTransaction[0].slice(0, 8), [

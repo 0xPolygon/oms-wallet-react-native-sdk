@@ -263,6 +263,78 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     }
   }
 
+  @objc(importWalletWithClientId:walletType:privateKey:privateKeyBytesJson:reference:resolve:reject:)
+  public func importWallet(
+    clientId: String,
+    walletType: String,
+    privateKey: String?,
+    privateKeyBytesJson: String?,
+    reference: String?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      let type = try self.walletType(walletType)
+      let key: WalletImportPrivateKey
+      switch (privateKey, privateKeyBytesJson) {
+      case (.some(let value), nil):
+        key = type == .ethereum ? .ethereum(value) : .solana(value)
+      case (nil, .some(let value)):
+        let bytes = Data(try self.decodeJSON([UInt8].self, from: value, name: "privateKey"))
+        key = type == .ethereum ? .ethereumBytes(bytes) : .solanaBytes(bytes)
+      default:
+        throw self.makeError("Exactly one private key representation is required")
+      }
+      return self.walletActivationResultDictionary(
+        try await client.wallet.importWallet(privateKey: key, reference: reference)
+      )
+    }
+  }
+
+  @objc(getWalletImportRecipientKeyWithClientId:cipherSuite:resolve:reject:)
+  public func getWalletImportRecipientKey(
+    clientId: String,
+    cipherSuite: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      self.walletImportRecipientKeyDictionary(
+        try await client.wallet.getWalletImportRecipientKey(
+          cipherSuite: try self.walletImportCipherSuite(cipherSuite)
+        )
+      )
+    }
+  }
+
+  @objc(importEncryptedWalletWithClientId:walletType:keyId:cipherSuite:encapsulatedKey:ciphertext:reference:resolve:reject:)
+  public func importEncryptedWallet(
+    clientId: String,
+    walletType: String,
+    keyId: String,
+    cipherSuite: String,
+    encapsulatedKey: String,
+    ciphertext: String,
+    reference: String?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      self.walletActivationResultDictionary(
+        try await client.wallet.importEncryptedWallet(
+          walletType: try self.walletType(walletType),
+          keyMaterial: EncryptedWalletImportKeyMaterial(
+            keyId: keyId,
+            cipherSuite: try self.walletImportCipherSuite(cipherSuite),
+            encapsulatedKey: encapsulatedKey,
+            ciphertext: ciphertext
+          ),
+          reference: reference
+        )
+      )
+    }
+  }
+
   @objc(selectWalletForPendingSelectionWithClientId:pendingSelectionId:walletId:resolve:reject:)
   public func selectWalletForPendingSelection(
     clientId: String,
@@ -339,6 +411,18 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     run(clientId: clientId, resolve: resolve, reject: reject) { client in
       let network = try self.requireNetwork(client, chainId: chainId)
       return try await client.wallet.signMessage(network: network, message: message)
+    }
+  }
+
+  @objc(signSolanaMessageWithClientId:message:resolve:reject:)
+  public func signSolanaMessage(
+    clientId: String,
+    message: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      try await client.wallet.signSolanaMessage(message: message)
     }
   }
 
@@ -446,10 +530,50 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     }
   }
 
-  @objc(respondToFeeOptionSelectionWithRequestId:selectionToken:errorMessage:resolve:reject:)
+  @objc(sendSolanaTransferWithClientId:network:asset:to:amount:mode:feeOptionSelectorId:waitForStatus:statusPollingTimeoutMs:statusPollingIntervalMs:statusPollingFastIntervalMs:statusPollingFastPollCount:resolve:reject:)
+  public func sendSolanaTransfer(
+    clientId: String,
+    network: String,
+    asset: String,
+    to: String,
+    amount: String,
+    mode: String?,
+    feeOptionSelectorId: String?,
+    waitForStatus: Bool,
+    statusPollingTimeoutMs: String?,
+    statusPollingIntervalMs: String?,
+    statusPollingFastIntervalMs: String?,
+    statusPollingFastPollCount: String?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      let statusPolling = try self.statusPollingOptions(
+        timeoutMs: statusPollingTimeoutMs,
+        intervalMs: statusPollingIntervalMs,
+        fastIntervalMs: statusPollingFastIntervalMs,
+        fastPollCount: statusPollingFastPollCount
+      )
+      return self.sendTransactionResponseDictionary(
+        try await client.wallet.sendSolanaTransfer(
+          network: try self.solanaNetwork(network),
+          asset: asset,
+          to: to,
+          amount: amount,
+          selectFeeOption: self.feeOptionSelector(feeOptionSelectorId),
+          mode: try self.transactionMode(mode),
+          waitForStatus: waitForStatus,
+          statusPolling: statusPolling ?? TransactionStatusPollingOptions()
+        )
+      )
+    }
+  }
+
+  @objc(respondToFeeOptionSelectionWithRequestId:selectionToken:selectionIndex:errorMessage:resolve:reject:)
   public func respondToFeeOptionSelection(
     requestId: String,
     selectionToken: String?,
+    selectionIndex: String?,
     errorMessage: String?,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
@@ -462,7 +586,12 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     if let errorMessage {
       continuation.resume(throwing: makeError(errorMessage))
     } else {
-      continuation.resume(returning: selectionToken.map(FeeOptionSelection.init(token:)))
+      do {
+        let index = try uint32(selectionIndex, name: "selectionIndex")
+        continuation.resume(returning: selectionToken.map { FeeOptionSelection(token: $0, index: index) })
+      } catch {
+        continuation.resume(throwing: error)
+      }
     }
     resolve(nil)
   }
@@ -511,6 +640,22 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     }
   }
 
+  @objc(getSolanaBalancesWithClientId:paramsJson:resolve:reject:)
+  public func getSolanaBalances(
+    clientId: String,
+    paramsJson: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      self.solanaBalancesResultDictionary(
+        try await client.indexer.getSolanaBalances(
+          try self.decodeGetSolanaBalancesParams(paramsJson)
+        )
+      )
+    }
+  }
+
   @objc(verifyMessageSignatureWithClientId:chainId:message:signature:resolve:reject:)
   public func verifyMessageSignature(
     clientId: String,
@@ -524,6 +669,23 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
       let network = try self.requireNetwork(client, chainId: chainId)
       return try await client.wallet.isValidMessageSignature(
         network: network,
+        walletAddress: try self.requireActiveWalletAddress(client),
+        message: message,
+        signature: signature
+      )
+    }
+  }
+
+  @objc(verifySolanaMessageSignatureWithClientId:message:signature:resolve:reject:)
+  public func verifySolanaMessageSignature(
+    clientId: String,
+    message: String,
+    signature: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      try await client.wallet.isValidSolanaMessageSignature(
         walletAddress: try self.requireActiveWalletAddress(client),
         message: message,
         signature: signature
@@ -567,47 +729,120 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     }
   }
 
-  @objc(listAccessWithClientId:pageSize:resolve:reject:)
-  public func listAccess(
+  @objc(inspectRemoteCredentialWithClientId:credentialId:resolve:reject:)
+  public func inspectRemoteCredential(
     clientId: String,
-    pageSize: String?,
+    credentialId: String,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
     run(clientId: clientId, resolve: resolve, reject: reject) { client in
-      try await client.wallet.listAccess(
-        pageSize: try self.uint32(pageSize, name: "pageSize")
-      ).map(self.credentialInfoDictionary)
+      self.remoteCredentialMetadataDictionary(
+        try await client.wallet.inspectRemoteCredential(credentialId: credentialId)
+      )
     }
   }
 
-  @objc(listAccessPageWithClientId:pageSize:cursor:resolve:reject:)
-  public func listAccessPage(
+  @objc(authorizeRemoteAccessWithClientId:credentialId:chainId:grantsJson:expiresAt:sessionId:resolve:reject:)
+  public func authorizeRemoteAccess(
     clientId: String,
-    pageSize: String?,
-    cursor: String?,
+    credentialId: String,
+    chainId: String,
+    grantsJson: String,
+    expiresAt: String,
+    sessionId: String?,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
     run(clientId: clientId, resolve: resolve, reject: reject) { client in
-      self.listAccessResponseDictionary(
-        try await client.wallet.listAccessPage(
-          pageSize: try self.uint32(pageSize, name: "pageSize"),
-          cursor: cursor
+      self.authorizedRemoteAccessDictionary(
+        try await client.wallet.authorizeRemoteAccess(
+          credentialId: credentialId,
+          network: try self.requireNetwork(client, chainId: chainId),
+          grants: try self.decodeSmartSessionGrants(grantsJson),
+          expiresAt: expiresAt,
+          sessionId: sessionId
         )
       )
     }
   }
 
-  @objc(revokeAccessWithClientId:targetCredentialId:resolve:reject:)
-  public func revokeAccess(
+  @objc(listAccessWithClientId:pageSize:type:resolve:reject:)
+  public func listAccess(
     clientId: String,
-    targetCredentialId: String,
+    pageSize: String?,
+    type: String?,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
     run(clientId: clientId, resolve: resolve, reject: reject) { client in
-      try await client.wallet.revokeAccess(targetCredentialId: targetCredentialId)
+      try await client.wallet.listAccess(
+        pageSize: try self.uint32(pageSize, name: "pageSize"),
+        type: try self.accessGrantType(type)
+      ).map(self.accessGrantDictionary)
+    }
+  }
+
+  @objc(listAccessPageWithClientId:pageSize:cursor:type:resolve:reject:)
+  public func listAccessPage(
+    clientId: String,
+    pageSize: String?,
+    cursor: String?,
+    type: String?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      self.accessGrantPageDictionary(
+        try await client.wallet.listAccessPage(
+          pageSize: try self.uint32(pageSize, name: "pageSize"),
+          cursor: cursor,
+          type: try self.accessGrantType(type)
+        )
+      )
+    }
+  }
+
+  @objc(getRemoteAccessSessionWithClientId:sessionId:resolve:reject:)
+  public func getRemoteAccessSession(
+    clientId: String,
+    sessionId: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      self.remoteAccessSessionDictionary(
+        try await client.wallet.getRemoteAccessSession(sessionId: sessionId)
+      )
+    }
+  }
+
+  @objc(getRemoteAccessSessionUsageWithClientId:sessionId:chainId:resolve:reject:)
+  public func getRemoteAccessSessionUsage(
+    clientId: String,
+    sessionId: String,
+    chainId: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      try await client.wallet.getRemoteAccessSessionUsage(
+        sessionId: sessionId,
+        network: try self.requireNetwork(client, chainId: chainId)
+      ).map(self.smartSessionGrantUsageDictionary)
+    }
+  }
+
+  @objc(revokeAccessWithClientId:credentialId:sessionId:resolve:reject:)
+  public func revokeAccess(
+    clientId: String,
+    credentialId: String,
+    sessionId: String?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(clientId: clientId, resolve: resolve, reject: reject) { client in
+      try await client.wallet.revokeAccess(credentialId: credentialId, sessionId: sessionId)
       return nil
     }
   }
@@ -724,7 +959,7 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
         "walletAddress": walletAddress,
         "wallet": walletDictionary(wallet),
         "wallets": wallets.map(walletDictionary),
-        "credential": credentialInfoDictionary(credential)
+        "credential": walletCredentialDictionary(credential)
       ]
     case .walletSelection(let pendingSelection):
       clearPendingWalletSelections(clientId: clientId)
@@ -733,7 +968,7 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
         "walletAddress": NSNull(),
         "wallet": NSNull(),
         "wallets": pendingSelection.wallets.map(walletDictionary),
-        "credential": credentialInfoDictionary(pendingSelection.credential),
+        "credential": walletCredentialDictionary(pendingSelection.credential),
         "pendingSelection": pendingWalletSelectionDictionary(clientId: clientId, pendingSelection)
       ]
     }
@@ -744,7 +979,8 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
       "id": wallet.id,
       "type": wallet.type.wireValue,
       "address": wallet.address,
-      "reference": wallet.reference ?? NSNull()
+      "reference": wallet.reference ?? NSNull(),
+      "keyOrigin": wallet.keyOrigin.wireValue
     ]
   }
 
@@ -760,7 +996,7 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
       "id": id,
       "walletType": pendingSelection.walletType.wireValue,
       "wallets": pendingSelection.wallets.map(walletDictionary),
-      "credential": credentialInfoDictionary(pendingSelection.credential)
+      "credential": walletCredentialDictionary(pendingSelection.credential)
     ]
   }
 
@@ -1047,7 +1283,8 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
 
   private func feeOptionSelectionDictionary(_ selection: FeeOptionSelection) -> [String: Any] {
     [
-      "token": selection.token
+      "token": selection.token,
+      "index": selection.index.map(NSNumber.init(value:)) ?? NSNull()
     ]
   }
 
@@ -1072,7 +1309,7 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     ]
   }
 
-  private func credentialInfoDictionary(_ credential: CredentialInfo) -> [String: Any] {
+  private func walletCredentialDictionary(_ credential: WalletCredential) -> [String: Any] {
     [
       "credentialId": credential.credentialId,
       "expiresAt": credential.expiresAt,
@@ -1080,10 +1317,186 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     ]
   }
 
-  private func listAccessResponseDictionary(_ response: ListAccessResponse) -> [String: Any] {
+  private func smartSessionGrantDictionary(_ grant: SmartSessionGrant) -> [String: Any] {
+    switch grant {
+    case .nativeTransfer(let to, let limit):
+      return [
+        "kind": "nativeTransfer",
+        "token": NSNull(),
+        "to": to,
+        "limit": limit,
+        "cumulative": NSNull()
+      ]
+    case .erc20Transfer(let token, let to, let limit, let cumulative):
+      return [
+        "kind": "erc20Transfer",
+        "token": token,
+        "to": to ?? NSNull(),
+        "limit": limit,
+        "cumulative": cumulative.map(NSNumber.init(value:)) ?? NSNull()
+      ]
+    }
+  }
+
+  private func remoteCredentialMetadataDictionary(_ metadata: RemoteCredentialMetadata) -> [String: Any] {
     [
-      "credentials": response.credentials.map(credentialInfoDictionary),
+      "appUrl": metadata.appUrl,
+      "appName": metadata.appName,
+      "appLogoUrl": metadata.appLogoUrl,
+      "custom": metadata.custom
+    ]
+  }
+
+  private func accessGrantDictionary(_ grant: AccessGrant) -> [String: Any] {
+    switch grant {
+    case .direct(let credential):
+      return [
+        "type": "direct",
+        "credential": walletCredentialDictionary(credential),
+        "sessionId": NSNull(),
+        "metadata": NSNull(),
+        "grants": []
+      ]
+    case .remote(let access):
+      return [
+        "type": "remote",
+        "credential": walletCredentialDictionary(access.credential),
+        "sessionId": access.sessionId,
+        "metadata": remoteCredentialMetadataDictionary(access.metadata),
+        "grants": access.grants.map(smartSessionGrantDictionary)
+      ]
+    }
+  }
+
+  private func accessGrantPageDictionary(_ response: AccessGrantPage) -> [String: Any] {
+    [
+      "grants": response.grants.map(accessGrantDictionary),
       "page": response.page.map(pageDictionary) ?? NSNull()
+    ]
+  }
+
+  private func walletImportRecipientKeyDictionary(_ key: WalletImportRecipientKey) -> [String: Any] {
+    [
+      "keyId": key.keyId,
+      "cipherSuite": key.cipherSuite.rawValue,
+      "publicKey": key.publicKey
+    ]
+  }
+
+  private func authorizedRemoteAccessDictionary(_ access: AuthorizedRemoteAccess) -> [String: Any] {
+    [
+      "walletId": access.walletId,
+      "sessionId": access.sessionId,
+      "expiresAt": access.expiresAt
+    ]
+  }
+
+  private func remoteAccessSessionDictionary(_ session: RemoteAccessSession) -> [String: Any] {
+    [
+      "sessionId": session.sessionId,
+      "walletId": session.walletId,
+      "signerAddress": session.signerAddress,
+      "grants": session.grants.map(smartSessionGrantDictionary),
+      "chainId": NSNumber(value: session.chainId),
+      "expiresAt": session.expiresAt
+    ]
+  }
+
+  private func smartSessionGrantUsageDictionary(_ usage: SmartSessionGrantUsage) -> [String: Any] {
+    [
+      "grant": smartSessionGrantDictionary(usage.grant),
+      "used": usage.used ?? NSNull()
+    ]
+  }
+
+  private func solanaBalanceDictionary(_ balance: SolanaBalance) -> [String: Any] {
+    switch balance {
+    case .native(let value):
+      return solanaBalanceDictionary(
+        assetType: "native",
+        network: value.network,
+        accountAddress: value.accountAddress,
+        tokenProgram: nil,
+        mintAddress: nil,
+        name: value.name,
+        symbol: value.symbol,
+        decimals: value.decimals,
+        balance: value.balance,
+        formattedBalance: value.formattedBalance,
+        imageUrl: value.imageUrl,
+        metadataUri: value.metadataUri,
+        verificationStatus: value.verificationStatus,
+        verificationSource: value.verificationSource,
+        priceUSD: value.priceUSD,
+        balanceUSD: value.balanceUSD
+      )
+    case .fungibleToken(let value):
+      return solanaBalanceDictionary(
+        assetType: "fungible-token",
+        network: value.network,
+        accountAddress: value.accountAddress,
+        tokenProgram: value.tokenProgram,
+        mintAddress: value.mintAddress,
+        name: value.name,
+        symbol: value.symbol,
+        decimals: value.decimals,
+        balance: value.balance,
+        formattedBalance: value.formattedBalance,
+        imageUrl: value.imageUrl,
+        metadataUri: value.metadataUri,
+        verificationStatus: value.verificationStatus,
+        verificationSource: value.verificationSource,
+        priceUSD: value.priceUSD,
+        balanceUSD: value.balanceUSD
+      )
+    }
+  }
+
+  private func solanaBalanceDictionary(
+    assetType: String,
+    network: SolanaNetwork,
+    accountAddress: String,
+    tokenProgram: SolanaTokenProgram?,
+    mintAddress: String?,
+    name: String,
+    symbol: String,
+    decimals: Int,
+    balance: String,
+    formattedBalance: String,
+    imageUrl: String?,
+    metadataUri: String?,
+    verificationStatus: SolanaVerificationStatus,
+    verificationSource: SolanaVerificationSource,
+    priceUSD: String?,
+    balanceUSD: String?
+  ) -> [String: Any] {
+    [
+      "assetType": assetType,
+      "network": network.rawValue,
+      "accountAddress": accountAddress,
+      "tokenProgram": tokenProgram?.rawValue ?? NSNull(),
+      "mintAddress": mintAddress ?? NSNull(),
+      "name": name,
+      "symbol": symbol,
+      "decimals": NSNumber(value: decimals),
+      "balance": balance,
+      "formattedBalance": formattedBalance,
+      "imageUrl": imageUrl ?? NSNull(),
+      "metadataUri": metadataUri ?? NSNull(),
+      "verificationStatus": verificationStatus.rawValue,
+      "verificationSource": verificationSource.rawValue,
+      "priceUSD": priceUSD ?? NSNull(),
+      "balanceUSD": balanceUSD ?? NSNull()
+    ]
+  }
+
+  private func solanaBalancesResultDictionary(_ result: SolanaBalancesResult) -> [String: Any] {
+    [
+      "status": result.status,
+      "balances": result.balances.map(solanaBalanceDictionary),
+      "errors": result.errors.map {
+        ["network": $0.network.rawValue, "reason": $0.reason]
+      }
     ]
   }
 
@@ -1098,9 +1511,33 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     switch value?.lowercased() {
     case nil, "ethereum":
       return .ethereum
+    case "solana":
+      return .solana
     default:
       throw makeError("Unsupported wallet type: \(value ?? "")")
     }
+  }
+
+  private func solanaNetwork(_ value: String) throws -> SolanaNetwork {
+    guard let network = SolanaNetwork(rawValue: value) else {
+      throw makeError("Unsupported Solana network: \(value)")
+    }
+    return network
+  }
+
+  private func walletImportCipherSuite(_ value: String) throws -> WalletImportCipherSuite {
+    guard let suite = WalletImportCipherSuite(rawValue: value) else {
+      throw makeError("Unsupported wallet import cipher suite: \(value)")
+    }
+    return suite
+  }
+
+  private func accessGrantType(_ value: String?) throws -> AccessGrantType? {
+    guard let value else { return nil }
+    guard let type = AccessGrantType(rawValue: value) else {
+      throw makeError("Unsupported access grant type: \(value)")
+    }
+    return type
   }
 
   private func walletSelectionBehavior(_ value: String?) throws -> WalletSelectionBehavior {
@@ -1241,6 +1678,42 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
       metadataOptions: value.metadataOptions,
       page: value.page?.tokenBalancesPageRequest
     )
+  }
+
+  private func decodeGetSolanaBalancesParams(_ jsonString: String) throws -> GetSolanaBalancesParams {
+    let value = try decodeJSON(SerializableGetSolanaBalancesParams.self, from: jsonString, name: "params")
+    return GetSolanaBalancesParams(
+      walletAddress: value.walletAddress,
+      networks: try value.networks?.map(solanaNetwork) ?? [.mainnet, .devnet],
+      includeMetadata: value.includeMetadata ?? true,
+      omitNativeBalances: value.omitNativeBalances,
+      mintAddresses: value.mintAddresses ?? [],
+      excludedMintAddresses: value.excludedMintAddresses ?? []
+    )
+  }
+
+  private func decodeSmartSessionGrants(_ jsonString: String) throws -> [SmartSessionGrant] {
+    try decodeJSON([SerializableSmartSessionGrant].self, from: jsonString, name: "grants").map { value in
+      switch value.kind {
+      case "nativeTransfer":
+        guard let to = value.to else {
+          throw makeError("Native-transfer grants require to")
+        }
+        return .nativeTransfer(to: to, limit: value.limit)
+      case "erc20Transfer":
+        guard let token = value.token else {
+          throw makeError("ERC-20 transfer grants require token")
+        }
+        return .erc20Transfer(
+          token: token,
+          to: value.to,
+          limit: value.limit,
+          cumulative: value.cumulative
+        )
+      default:
+        throw makeError("Unsupported smart-session grant kind: \(value.kind)")
+      }
+    }
   }
 
   private func decodeJSON<T: Decodable>(_ type: T.Type, from jsonString: String, name: String) throws -> T {
@@ -1468,6 +1941,23 @@ private struct SerializableGetTransactionHistoryParams: Decodable {
   let omitPrices: Bool?
   let metadataOptions: MetadataOptions?
   let page: SerializableTokenBalancesPageRequest?
+}
+
+private struct SerializableGetSolanaBalancesParams: Decodable {
+  let walletAddress: String
+  let networks: [String]?
+  let includeMetadata: Bool?
+  let omitNativeBalances: Bool?
+  let mintAddresses: [String]?
+  let excludedMintAddresses: [String]?
+}
+
+private struct SerializableSmartSessionGrant: Decodable {
+  let kind: String
+  let token: String?
+  let to: String?
+  let limit: String
+  let cumulative: Bool?
 }
 
 private struct SerializableOidcProviderConfig: Decodable {

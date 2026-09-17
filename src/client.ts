@@ -1,22 +1,27 @@
 import type { EventSubscription } from 'react-native';
+import type { Network } from './networks';
 import type {
+  AccessGrant,
+  AccessGrantPage,
+  AuthorizeRemoteAccessParams,
+  AuthorizedRemoteAccess,
   CallContractParams,
   CompleteEmailAuthParams,
   CreateWalletParams,
   GetBalancesParams,
   GetIdTokenParams,
+  GetSolanaBalancesParams,
   GetTransactionHistoryParams,
   HandleOidcRedirectCallbackParams,
   ListAccessPageParams,
-  ListAccessPagesParams,
   ListAccessParams,
   BalancesResult,
   OMSWalletParams,
   OMSWalletSessionExpiredEvent,
   OMSWalletSessionState,
   CompleteAuthResult,
-  CredentialInfo,
-  ListAccessResponse,
+  ImportEncryptedWalletParams,
+  ImportWalletParams,
   OidcRedirectAuthResult,
   SendTransactionResponse,
   StartOidcRedirectAuthResult,
@@ -25,13 +30,23 @@ import type {
   WalletAccount,
   WalletActivationResult,
   SendTransactionParams,
+  SendSolanaTransferParams,
   SignMessageParams,
+  SignSolanaMessageParams,
   SignInWithOidcIdTokenParams,
   SignTypedDataParams,
   StartEmailAuthParams,
   StartOidcRedirectAuthParams,
   IsValidMessageSignatureParams,
+  IsValidSolanaMessageSignatureParams,
   IsValidTypedDataSignatureParams,
+  RemoteAccessSession,
+  RemoteCredentialMetadata,
+  RevokeAccessParams,
+  SmartSessionGrantUsage,
+  SolanaBalancesResult,
+  WalletImportCipherSuite,
+  WalletImportRecipientKey,
 } from './types';
 
 function unsupported(): never {
@@ -107,11 +122,31 @@ export class OMSWalletClient {
     unsupported();
   }
 
+  importWallet(_params: ImportWalletParams): Promise<WalletActivationResult> {
+    unsupported();
+  }
+
+  getWalletImportRecipientKey(_params: {
+    cipherSuite: WalletImportCipherSuite;
+  }): Promise<WalletImportRecipientKey> {
+    unsupported();
+  }
+
+  importEncryptedWallet(
+    _params: ImportEncryptedWalletParams
+  ): Promise<WalletActivationResult> {
+    unsupported();
+  }
+
   signOut(): Promise<void> {
     unsupported();
   }
 
   signMessage(_params: SignMessageParams): Promise<string> {
+    unsupported();
+  }
+
+  signSolanaMessage(_params: SignSolanaMessageParams): Promise<string> {
     unsupported();
   }
 
@@ -129,12 +164,24 @@ export class OMSWalletClient {
     unsupported();
   }
 
+  sendSolanaTransfer(
+    _params: SendSolanaTransferParams
+  ): Promise<SendTransactionResponse> {
+    unsupported();
+  }
+
   getTransactionStatus(_txnId: string): Promise<TransactionStatusResponse> {
     unsupported();
   }
 
   isValidMessageSignature(
     _params: IsValidMessageSignatureParams
+  ): Promise<boolean> {
+    unsupported();
+  }
+
+  isValidSolanaMessageSignature(
+    _params: IsValidSolanaMessageSignatureParams
   ): Promise<boolean> {
     unsupported();
   }
@@ -149,23 +196,46 @@ export class OMSWalletClient {
     unsupported();
   }
 
-  listAccess(_params: ListAccessParams = {}): Promise<CredentialInfo[]> {
+  inspectRemoteCredential(_params: {
+    credentialId: string;
+  }): Promise<RemoteCredentialMetadata> {
+    unsupported();
+  }
+
+  authorizeRemoteAccess(
+    _params: AuthorizeRemoteAccessParams
+  ): Promise<AuthorizedRemoteAccess> {
+    unsupported();
+  }
+
+  listAccess(_params: ListAccessParams = {}): Promise<AccessGrant[]> {
     unsupported();
   }
 
   async *listAccessPages(
-    _params: ListAccessPagesParams = {}
-  ): AsyncGenerator<ListAccessResponse, void, void> {
+    _params: ListAccessParams = {}
+  ): AsyncGenerator<AccessGrantPage, void, void> {
     unsupported();
   }
 
-  listAccessPage(
-    _params: ListAccessPageParams = {}
-  ): Promise<ListAccessResponse> {
+  listAccessPage(_params: ListAccessPageParams = {}): Promise<AccessGrantPage> {
     unsupported();
   }
 
-  revokeAccess(_targetCredentialId: string): Promise<void> {
+  getRemoteAccessSession(_params: {
+    sessionId: string;
+  }): Promise<RemoteAccessSession> {
+    unsupported();
+  }
+
+  getRemoteAccessSessionUsage(_params: {
+    sessionId: string;
+    network: Network;
+  }): Promise<SmartSessionGrantUsage[]> {
+    unsupported();
+  }
+
+  revokeAccess(_params: RevokeAccessParams): Promise<void> {
     unsupported();
   }
 }
@@ -178,6 +248,12 @@ export class OMSIndexerClient {
   getTransactionHistory(
     _params: GetTransactionHistoryParams
   ): Promise<TransactionHistoryResult> {
+    unsupported();
+  }
+
+  getSolanaBalances(
+    _params: GetSolanaBalancesParams
+  ): Promise<SolanaBalancesResult> {
     unsupported();
   }
 }

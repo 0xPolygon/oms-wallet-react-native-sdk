@@ -7,7 +7,7 @@ OMS Wallet SDK for bare React Native apps and Expo development builds on iOS and
 ## Requirements
 
 - React Native 0.85 or newer with React 19.2 or newer
-- Android `minSdk 24`, `compileSdk 36`, Java 17, and Android 10 / API 29 or newer at runtime
+- Android `minSdk 24`, `compileSdk 36`, Java 17, Kotlin 2.4.10, and Android 10 / API 29 or newer at runtime
 - iOS 15 or newer with Xcode 26
 
 The package contains native code. Expo Go and React Native Web are not supported.
@@ -133,6 +133,35 @@ const transaction = await omsWallet.wallet.sendTransaction({
 
 `sendTransaction` and `callContract` wait for transaction status by default. Set `waitForStatus: false` to return after submission.
 
+## Solana Wallets
+
+Create or import Solana wallets, sign messages, and submit native SOL or SPL-token transfers:
+
+```ts
+import { SolanaNetworks } from '@polygonlabs/oms-wallet-react-native';
+
+const { wallet } = await omsWallet.wallet.createWallet({
+  walletType: 'solana',
+});
+
+const signature = await omsWallet.wallet.signSolanaMessage({
+  message: 'Hello from React Native',
+});
+
+await omsWallet.wallet.sendSolanaTransfer({
+  network: SolanaNetworks.devnet,
+  asset: 'SOL',
+  to: '<solana-address>',
+  amount: '1000000',
+});
+```
+
+`amount` uses the asset's smallest unit. `importWallet` accepts an Ethereum private key or a Solana seed/keypair as text or raw bytes and encrypts it locally for the attested wallet-import transport.
+
+## Remote Access
+
+Inspect a remote credential before approval, authorize bounded smart-session grants, inspect their usage, and revoke direct or remote access through the methods on `omsWallet.wallet`. See the [Public TypeScript API](./API.md) for the exact grant and response types.
+
 ## Query The Indexer
 
 ```ts
@@ -143,12 +172,18 @@ const balances = await omsWallet.indexer.getBalances({
   networks: [Networks.polygon],
   includeMetadata: true,
 });
+
+const solanaBalances = await omsWallet.indexer.getSolanaBalances({
+  walletAddress: '<solana-address>',
+  networks: [SolanaNetworks.devnet],
+});
 ```
 
 ## Documentation
 
 - [React Native SDK guide](https://docs.polygon.technology/wallets/sdk/react-native/quickstart)
 - [Public TypeScript API](./API.md)
+- [Migrate from 0.2 to 0.3](./MIGRATION.md)
 
 ## Examples
 

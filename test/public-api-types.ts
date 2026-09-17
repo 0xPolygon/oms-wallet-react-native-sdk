@@ -10,6 +10,9 @@ import type {
   ContractTokenBalance,
   TokenBalance,
   Transaction,
+  AccessGrant,
+  ImportWalletParams,
+  SolanaBalance,
   WalletAccount,
 } from '../src/types';
 import type { OMSWalletError, OMSWalletUpstreamError } from '../src/errors';
@@ -42,6 +45,30 @@ export type OptionalOutputFieldsRemainOptional = Assert<
 export type RequiredTransactionFieldsRemainRequired = Assert<
   IsOptional<Transaction, 'txnHash'> extends false ? true : false
 >;
+
+export type WalletKeyOriginRemainsRequired = Assert<
+  IsOptional<WalletAccount, 'keyOrigin'> extends false ? true : false
+>;
+
+export function narrowAccessGrant(grant: AccessGrant): string {
+  if (grant.type === 'remote') {
+    return grant.sessionId;
+  }
+  return grant.credentialId;
+}
+
+export function narrowSolanaBalance(balance: SolanaBalance): string {
+  if (balance.assetType === 'fungible-token') {
+    return balance.mintAddress;
+  }
+  const mintAddress: undefined = balance.mintAddress;
+  return mintAddress ?? balance.accountAddress;
+}
+
+export const byteWalletImport: ImportWalletParams = {
+  type: 'solana',
+  privateKey: new Uint8Array(32),
+};
 
 export function narrowTokenBalance(
   tokenBalance: TokenBalance

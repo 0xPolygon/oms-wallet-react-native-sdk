@@ -177,6 +177,55 @@ sessionLifetimeSeconds:(nullable NSString *)sessionLifetimeSeconds
                             reject:reject];
 }
 
+- (void)importWallet:(NSString *)clientId
+          walletType:(NSString *)walletType
+          privateKey:(nullable NSString *)privateKey
+ privateKeyBytesJson:(nullable NSString *)privateKeyBytesJson
+           reference:(nullable NSString *)reference
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl importWalletWithClientId:clientId
+                       walletType:walletType
+                       privateKey:privateKey
+              privateKeyBytesJson:privateKeyBytesJson
+                        reference:reference
+                          resolve:resolve
+                           reject:reject];
+}
+
+- (void)getWalletImportRecipientKey:(NSString *)clientId
+                        cipherSuite:(NSString *)cipherSuite
+                            resolve:(RCTPromiseResolveBlock)resolve
+                             reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl getWalletImportRecipientKeyWithClientId:clientId
+                                     cipherSuite:cipherSuite
+                                         resolve:resolve
+                                          reject:reject];
+}
+
+- (void)importEncryptedWallet:(NSString *)clientId
+                   walletType:(NSString *)walletType
+                        keyId:(NSString *)keyId
+                  cipherSuite:(NSString *)cipherSuite
+              encapsulatedKey:(NSString *)encapsulatedKey
+                   ciphertext:(NSString *)ciphertext
+                    reference:(nullable NSString *)reference
+                      resolve:(RCTPromiseResolveBlock)resolve
+                       reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl importEncryptedWalletWithClientId:clientId
+                                walletType:walletType
+                                     keyId:keyId
+                               cipherSuite:cipherSuite
+                           encapsulatedKey:encapsulatedKey
+                                ciphertext:ciphertext
+                                 reference:reference
+                                   resolve:resolve
+                                    reject:reject];
+}
+
 - (void)selectWalletForPendingSelection:(NSString *)clientId
                      pendingSelectionId:(NSString *)pendingSelectionId
                                walletId:(NSString *)walletId
@@ -221,6 +270,17 @@ sessionLifetimeSeconds:(nullable NSString *)sessionLifetimeSeconds
                          message:message
                          resolve:resolve
                           reject:reject];
+}
+
+- (void)signSolanaMessage:(NSString *)clientId
+                   message:(NSString *)message
+                   resolve:(RCTPromiseResolveBlock)resolve
+                    reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl signSolanaMessageWithClientId:clientId
+                               message:message
+                               resolve:resolve
+                                reject:reject];
 }
 
 - (void)signTypedData:(NSString *)clientId
@@ -298,14 +358,47 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                            reject:reject];
 }
 
+- (void)sendSolanaTransfer:(NSString *)clientId
+                    network:(NSString *)network
+                      asset:(NSString *)asset
+                         to:(NSString *)to
+                     amount:(NSString *)amount
+                       mode:(nullable NSString *)mode
+        feeOptionSelectorId:(nullable NSString *)feeOptionSelectorId
+              waitForStatus:(BOOL)waitForStatus
+     statusPollingTimeoutMs:(nullable NSString *)statusPollingTimeoutMs
+    statusPollingIntervalMs:(nullable NSString *)statusPollingIntervalMs
+statusPollingFastIntervalMs:(nullable NSString *)statusPollingFastIntervalMs
+statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
+                    resolve:(RCTPromiseResolveBlock)resolve
+                     reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl sendSolanaTransferWithClientId:clientId
+                                network:network
+                                  asset:asset
+                                     to:to
+                                 amount:amount
+                                   mode:mode
+                    feeOptionSelectorId:feeOptionSelectorId
+                          waitForStatus:waitForStatus
+                 statusPollingTimeoutMs:statusPollingTimeoutMs
+                statusPollingIntervalMs:statusPollingIntervalMs
+            statusPollingFastIntervalMs:statusPollingFastIntervalMs
+            statusPollingFastPollCount:statusPollingFastPollCount
+                                resolve:resolve
+                                 reject:reject];
+}
+
 - (void)respondToFeeOptionSelection:(NSString *)requestId
                      selectionToken:(nullable NSString *)selectionToken
+                     selectionIndex:(nullable NSString *)selectionIndex
                        errorMessage:(nullable NSString *)errorMessage
                             resolve:(RCTPromiseResolveBlock)resolve
                              reject:(RCTPromiseRejectBlock)reject
 {
   [_impl respondToFeeOptionSelectionWithRequestId:requestId
                                    selectionToken:selectionToken
+                                   selectionIndex:selectionIndex
                                      errorMessage:errorMessage
                                           resolve:resolve
                                            reject:reject];
@@ -338,6 +431,17 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                                     reject:reject];
 }
 
+- (void)getSolanaBalances:(NSString *)clientId
+               paramsJson:(NSString *)paramsJson
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl getSolanaBalancesWithClientId:clientId
+                            paramsJson:paramsJson
+                               resolve:resolve
+                                reject:reject];
+}
+
 - (void)verifyMessageSignature:(NSString *)clientId
                        chainId:(NSString *)chainId
                        message:(NSString *)message
@@ -351,6 +455,19 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                                   signature:signature
                                     resolve:resolve
                                      reject:reject];
+}
+
+- (void)verifySolanaMessageSignature:(NSString *)clientId
+                               message:(NSString *)message
+                             signature:(NSString *)signature
+                               resolve:(RCTPromiseResolveBlock)resolve
+                                reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl verifySolanaMessageSignatureWithClientId:clientId
+                                           message:message
+                                         signature:signature
+                                           resolve:resolve
+                                            reject:reject];
 }
 
 - (void)verifyTypedDataSignature:(NSString *)clientId
@@ -381,36 +498,99 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                          reject:reject];
 }
 
+- (void)inspectRemoteCredential:(NSString *)clientId
+                   credentialId:(NSString *)credentialId
+                        resolve:(RCTPromiseResolveBlock)resolve
+                         reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl inspectRemoteCredentialWithClientId:clientId
+                                credentialId:credentialId
+                                     resolve:resolve
+                                      reject:reject];
+}
+
+- (void)authorizeRemoteAccess:(NSString *)clientId
+                 credentialId:(NSString *)credentialId
+                      chainId:(NSString *)chainId
+                   grantsJson:(NSString *)grantsJson
+                    expiresAt:(NSString *)expiresAt
+                    sessionId:(nullable NSString *)sessionId
+                      resolve:(RCTPromiseResolveBlock)resolve
+                       reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl authorizeRemoteAccessWithClientId:clientId
+                              credentialId:credentialId
+                                   chainId:chainId
+                                grantsJson:grantsJson
+                                 expiresAt:expiresAt
+                                 sessionId:sessionId
+                                   resolve:resolve
+                                    reject:reject];
+}
+
 - (void)listAccess:(NSString *)clientId
           pageSize:(nullable NSString *)pageSize
+              type:(nullable NSString *)type
            resolve:(RCTPromiseResolveBlock)resolve
             reject:(RCTPromiseRejectBlock)reject
 {
-  [_impl listAccessWithClientId:clientId pageSize:pageSize resolve:resolve reject:reject];
+  [_impl listAccessWithClientId:clientId
+                       pageSize:pageSize
+                           type:type
+                        resolve:resolve
+                         reject:reject];
 }
 
 - (void)listAccessPage:(NSString *)clientId
               pageSize:(nullable NSString *)pageSize
                 cursor:(nullable NSString *)cursor
+                  type:(nullable NSString *)type
                resolve:(RCTPromiseResolveBlock)resolve
                 reject:(RCTPromiseRejectBlock)reject
 {
   [_impl listAccessPageWithClientId:clientId
                             pageSize:pageSize
                               cursor:cursor
+                                type:type
                              resolve:resolve
                               reject:reject];
 }
 
+- (void)getRemoteAccessSession:(NSString *)clientId
+                     sessionId:(NSString *)sessionId
+                       resolve:(RCTPromiseResolveBlock)resolve
+                        reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl getRemoteAccessSessionWithClientId:clientId
+                                  sessionId:sessionId
+                                    resolve:resolve
+                                     reject:reject];
+}
+
+- (void)getRemoteAccessSessionUsage:(NSString *)clientId
+                           sessionId:(NSString *)sessionId
+                             chainId:(NSString *)chainId
+                             resolve:(RCTPromiseResolveBlock)resolve
+                              reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl getRemoteAccessSessionUsageWithClientId:clientId
+                                        sessionId:sessionId
+                                          chainId:chainId
+                                          resolve:resolve
+                                           reject:reject];
+}
+
 - (void)revokeAccess:(NSString *)clientId
-  targetCredentialId:(NSString *)targetCredentialId
+        credentialId:(NSString *)credentialId
+           sessionId:(nullable NSString *)sessionId
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject
 {
   [_impl revokeAccessWithClientId:clientId
-               targetCredentialId:targetCredentialId
-                           resolve:resolve
-                            reject:reject];
+                     credentialId:credentialId
+                        sessionId:sessionId
+                          resolve:resolve
+                           reject:reject];
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:

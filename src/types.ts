@@ -1,6 +1,8 @@
-import type { Network } from './networks';
+import type { Network, SolanaNetwork } from './networks';
 
-export type WalletType = 'ethereum';
+export type WalletType = 'ethereum' | 'solana';
+
+export type WalletKeyOrigin = 'enclave' | 'imported';
 
 export type WalletSelectionBehavior = 'automatic' | 'manual';
 
@@ -44,6 +46,7 @@ export type WalletAccount = {
   type: WalletType;
   address: string;
   reference?: string;
+  keyOrigin: WalletKeyOrigin;
 };
 
 export type WalletActivationResult = {
@@ -51,7 +54,7 @@ export type WalletActivationResult = {
   wallet: WalletAccount;
 };
 
-export type CredentialInfo = {
+export type WalletCredential = {
   credentialId: string;
   expiresAt: string;
   isCaller: boolean;
@@ -60,7 +63,7 @@ export type CredentialInfo = {
 export type PendingWalletSelection = {
   walletType: WalletType;
   wallets: WalletAccount[];
-  credential: CredentialInfo;
+  credential: WalletCredential;
   selectWallet(walletId: string): Promise<WalletActivationResult>;
   createAndSelectWallet(reference?: string): Promise<WalletActivationResult>;
 };
@@ -71,7 +74,7 @@ export type CompleteAuthResult =
       walletAddress: string;
       wallet: WalletAccount;
       wallets: WalletAccount[];
-      credential: CredentialInfo;
+      credential: WalletCredential;
       pendingSelection?: undefined;
     }
   | {
@@ -79,7 +82,7 @@ export type CompleteAuthResult =
       walletAddress: undefined;
       wallet: undefined;
       wallets: WalletAccount[];
-      credential: CredentialInfo;
+      credential: WalletCredential;
       pendingSelection: PendingWalletSelection;
     };
 
@@ -177,6 +180,43 @@ export type CreateWalletParams = {
   reference?: string;
 };
 
+export type WalletImportCipherSuite =
+  | 'x25519-sha256-aes256gcm'
+  | 'x25519-sha256-chacha20poly1305'
+  | 'p256-sha256-aes256gcm'
+  | 'p256-sha256-chacha20poly1305';
+
+export type ImportWalletParams =
+  | {
+      type: 'ethereum';
+      privateKey: string | Uint8Array;
+      reference?: string;
+    }
+  | {
+      type: 'solana';
+      privateKey: string | Uint8Array;
+      reference?: string;
+    };
+
+export type WalletImportRecipientKey = {
+  keyId: string;
+  cipherSuite: WalletImportCipherSuite;
+  publicKey: string;
+};
+
+export type EncryptedWalletImportKeyMaterial = {
+  keyId: string;
+  cipherSuite: WalletImportCipherSuite;
+  encapsulatedKey: string;
+  ciphertext: string;
+};
+
+export type ImportEncryptedWalletParams = {
+  type: WalletType;
+  keyMaterial: EncryptedWalletImportKeyMaterial;
+  reference?: string;
+};
+
 export type SignTypedDataParams = {
   network: Network;
   typedData: unknown;
@@ -184,6 +224,10 @@ export type SignTypedDataParams = {
 
 export type SignMessageParams = {
   network: Network;
+  message: string;
+};
+
+export type SignSolanaMessageParams = {
   message: string;
 };
 
@@ -244,6 +288,7 @@ export type FeeOption = {
 
 export type FeeOptionSelection = {
   token: string;
+  index?: number;
 };
 
 export type TokenBalancesPage = {
@@ -365,6 +410,17 @@ export type SendTransactionParams = {
   statusPolling?: TransactionStatusPollingOptions;
 };
 
+export type SendSolanaTransferParams = {
+  network: SolanaNetwork;
+  asset: string;
+  to: string;
+  amount: string;
+  mode?: TransactionMode;
+  selectFeeOption?: FeeOptionSelector;
+  waitForStatus?: boolean;
+  statusPolling?: TransactionStatusPollingOptions;
+};
+
 export type CallContractParams = {
   network: Network;
   contractAddress: string;
@@ -396,6 +452,60 @@ export type BalancesResult = {
   page?: TokenBalancesPage;
   nativeBalances: NativeTokenBalance[];
   balances: ContractTokenBalance[];
+};
+
+export type SolanaVerificationStatus = 'verified' | 'unverified' | 'unknown';
+
+export type SolanaVerificationSource = 'jupiter' | 'solflare-utl' | 'none';
+
+type SolanaBalanceBase = {
+  network: SolanaNetwork;
+  accountAddress: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance: string;
+  formattedBalance: string;
+  imageUrl?: string;
+  metadataUri?: string;
+  verificationStatus: SolanaVerificationStatus;
+  verificationSource: SolanaVerificationSource;
+  priceUSD?: string;
+  balanceUSD?: string;
+};
+
+export type SolanaNativeBalance = SolanaBalanceBase & {
+  assetType: 'native';
+  tokenProgram?: undefined;
+  mintAddress?: undefined;
+};
+
+export type SolanaFungibleTokenBalance = SolanaBalanceBase & {
+  assetType: 'fungible-token';
+  tokenProgram: 'spl-token' | 'token-2022';
+  mintAddress: string;
+};
+
+export type SolanaBalance = SolanaNativeBalance | SolanaFungibleTokenBalance;
+
+export type SolanaNetworkError = {
+  network: SolanaNetwork;
+  reason: string;
+};
+
+export type GetSolanaBalancesParams = {
+  walletAddress: string;
+  networks?: SolanaNetwork[];
+  includeMetadata?: boolean;
+  omitNativeBalances?: boolean;
+  mintAddresses?: string[];
+  excludedMintAddresses?: string[];
+};
+
+export type SolanaBalancesResult = {
+  status: number;
+  balances: SolanaBalance[];
+  errors: SolanaNetworkError[];
 };
 
 export type GetBalancesParams = {
@@ -463,6 +573,11 @@ export type IsValidMessageSignatureParams = {
   signature: string;
 };
 
+export type IsValidSolanaMessageSignatureParams = {
+  message: string;
+  signature: string;
+};
+
 export type IsValidTypedDataSignatureParams = {
   network: Network;
   typedData: unknown;
@@ -479,20 +594,87 @@ export type AccessPage = {
   cursor?: string;
 };
 
-export type ListAccessResponse = {
-  credentials: CredentialInfo[];
+export type RemoteCredentialMetadata = {
+  appUrl: string;
+  appName: string;
+  appLogoUrl: string;
+  custom: Record<string, string>;
+};
+
+export type SmartSessionGrant =
+  | {
+      kind: 'nativeTransfer';
+      to: string;
+      limit: string;
+    }
+  | {
+      kind: 'erc20Transfer';
+      token: string;
+      to?: string;
+      limit: string;
+      cumulative?: boolean;
+    };
+
+export type DirectAccessGrant = WalletCredential & {
+  type: 'direct';
+};
+
+export type RemoteAccessGrant = WalletCredential & {
+  type: 'remote';
+  sessionId: string;
+  metadata: RemoteCredentialMetadata;
+  grants: SmartSessionGrant[];
+};
+
+export type AccessGrant = DirectAccessGrant | RemoteAccessGrant;
+
+export type AccessGrantType = AccessGrant['type'];
+
+export type AccessGrantPage = {
+  grants: AccessGrant[];
   page?: AccessPage;
 };
 
 export type ListAccessParams = {
   pageSize?: number;
-};
-
-export type ListAccessPagesParams = {
-  pageSize?: number;
+  type?: AccessGrantType;
 };
 
 export type ListAccessPageParams = {
   pageSize?: number;
   cursor?: string;
+  type?: AccessGrantType;
+};
+
+export type AuthorizeRemoteAccessParams = {
+  credentialId: string;
+  network: Network;
+  grants: SmartSessionGrant[];
+  expiresAt: string;
+  sessionId?: string;
+};
+
+export type AuthorizedRemoteAccess = {
+  walletId: string;
+  sessionId: string;
+  expiresAt: string;
+};
+
+export type RemoteAccessSession = {
+  sessionId: string;
+  walletId: string;
+  signerAddress: string;
+  grants: SmartSessionGrant[];
+  chainId: number;
+  expiresAt: string;
+};
+
+export type SmartSessionGrantUsage = {
+  grant: SmartSessionGrant;
+  used?: string;
+};
+
+export type RevokeAccessParams = {
+  credentialId: string;
+  sessionId?: string;
 };
