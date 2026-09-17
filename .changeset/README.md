@@ -10,5 +10,5 @@ Use `yarn changeset add --empty` for documentation, CI, tooling, or example-only
 not change the published package.
 
 The automated release workflow consumes changesets, updates the root package version and
-`CHANGELOG.md`, publishes through npm trusted publishing, and creates the `v<version>` tag and
-GitHub Release.
+`CHANGELOG.md`, stages the package through npm trusted publishing, and creates the package tag and
+GitHub Release. An npm maintainer approves the staged package with 2FA before it becomes public.

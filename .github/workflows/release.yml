@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       snapshot_tag:
-        description: npm dist-tag for a throwaway snapshot (for example canary or pre-0.3.0)
+        description: npm dist-tag for a staged snapshot (for example canary or pre-0.3.0)
         required: true
         default: snapshot
 
@@ -22,13 +22,10 @@ jobs:
     uses: ./.github/workflows/verification.yml
 
   release:
-    name: Release PR or publish
+    name: Release PR or stage package
     if: github.event_name == 'push'
     needs: verification
     runs-on: ubuntu-latest
-    outputs:
-      published: ${{ steps.changesets.outputs.published }}
-      published_packages: ${{ steps.changesets.outputs.publishedPackages }}
     permissions:
       contents: write
       pull-requests: write
@@ -49,11 +46,10 @@ jobs:
         uses: ./.github/actions/setup
         with:
           cache-dependencies: 'false'
-      - name: Require npm trusted-publishing support
-        run: |
-          NPM_VERSION=$(npm --version)
-          node -e 'const [major, minor, patch = 0] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error(`npm ${process.argv[1]} does not support trusted publishing; npm 11.5.1 or newer is required`)' "$NPM_VERSION"
-      - name: Create release pull request or publish
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install npm with staged-publishing support
+        run: npm install --global npm@11.15.0
+      - name: Create release pull request or stage package
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
@@ -61,38 +57,15 @@ jobs:
           commit: 'chore(release): version package'
           commitMode: github-api
           version: yarn changeset version
-          publish: yarn changeset publish
+          # The helper packs the package and stages it with npm. Its `New tag:` output lets
+          # changesets/action create the package tag and GitHub Release.
+          publish: yarn ci:stage-release
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
-  post-publish-expo-update:
-    name: Post-publish Expo update
-    if: needs.release.outputs.published == 'true'
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Create release app token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          app-id: ${{ secrets.CHANGESET_RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.CHANGESET_RELEASE_BOT_APP_PRIVATE_KEY }}
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Setup
-        uses: ./.github/actions/setup
-      - name: Open published Expo example update
-        run: node scripts/open-expo-update-pr.mjs
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          PUBLISHED_PACKAGES: ${{ needs.release.outputs.published_packages }}
-
   snapshot:
-    name: Publish snapshot
+    name: Stage snapshot
     if: github.event_name == 'workflow_dispatch'
     needs: verification
     runs-on: ubuntu-latest
@@ -116,16 +89,16 @@ jobs:
         uses: ./.github/actions/setup
         with:
           cache-dependencies: 'false'
-      - name: Require npm trusted-publishing support
-        run: |
-          NPM_VERSION=$(npm --version)
-          node -e 'const [major, minor, patch = 0] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error(`npm ${process.argv[1]} does not support trusted publishing; npm 11.5.1 or newer is required`)' "$NPM_VERSION"
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install npm with staged-publishing support
+        run: npm install --global npm@11.15.0
       - name: Version snapshot
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
-        run: yarn changeset version --snapshot "$SNAPSHOT_TAG"
-      - name: Publish snapshot
+        run: node scripts/prepare-npm-snapshot.mjs
+      - name: Stage snapshot package
         env:
-          SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
-        run: yarn changeset publish --tag "$SNAPSHOT_TAG" --no-git-tag
+          NPM_STAGE_CREATE_GIT_TAGS: 'false'
+          NPM_STAGE_TAG: ${{ inputs.snapshot_tag }}
+        run: yarn ci:stage-release

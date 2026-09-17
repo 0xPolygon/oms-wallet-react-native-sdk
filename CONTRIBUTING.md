@@ -62,8 +62,8 @@ yarn expo-example
 
 ## Publishing
 
-Publishing is CI-only and driven by Changesets. See `PUBLISHING.md`; never publish a real release
-from a local machine.
+Publishing is CI-only and driven by Changesets. See `PUBLISHING.md`; never publish or stage a
+release from a local machine.
 
 ## Signed commits
 
