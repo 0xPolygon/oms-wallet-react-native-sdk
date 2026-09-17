@@ -4,15 +4,8 @@ import { spawnSync } from 'node:child_process';
 const packageName = '@polygonlabs/oms-wallet-react-native';
 const token = requireEnv('GITHUB_TOKEN');
 const repository = requireEnv('GITHUB_REPOSITORY');
-const baseCommit = requireEnv('GITHUB_SHA');
-const publishedPackages = JSON.parse(requireEnv('PUBLISHED_PACKAGES'));
-const publishedPackage = publishedPackages.find(
-  (candidate) => candidate.name === packageName
-);
-
-if (!publishedPackage) {
-  throw new Error(`${packageName} was not present in publishedPackages`);
-}
+const publishedVersion = requireEnv('PUBLISHED_VERSION');
+const baseCommit = run('git', ['rev-parse', 'HEAD'], { capture: true }).trim();
 
 const rootPackage = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -24,15 +17,15 @@ const baseBranch = changesetConfig.baseBranch;
 if (typeof baseBranch !== 'string' || baseBranch.length === 0) {
   throw new Error('.changeset/config.json must define baseBranch');
 }
-if (rootPackage.version !== publishedPackage.version) {
+if (rootPackage.version !== publishedVersion) {
   throw new Error(
-    `Published version ${publishedPackage.version} does not match package.json ${rootPackage.version}`
+    `Published version ${publishedVersion} does not match package.json ${rootPackage.version}`
   );
 }
 
 await waitForPublishedPackage(
   packageName,
-  publishedPackage.version,
+  publishedVersion,
   rootPackage.publishConfig?.registry ?? 'https://registry.npmjs.org/'
 );
 
@@ -41,7 +34,7 @@ run('npm', ['--prefix', 'examples/expo-example', 'run', 'typecheck']);
 run('yarn', ['expo-example:prebuild']);
 run('yarn', ['expo-example:verify-autolinking']);
 
-const version = publishedPackage.version;
+const version = publishedVersion;
 const branch = `update-expo-example-v${version}`;
 const [owner] = repository.split('/');
 const existingPulls = await github(
@@ -112,15 +105,16 @@ function requireEnv(name) {
   return value;
 }
 
-function run(command, args) {
+function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: new URL('..', import.meta.url),
     encoding: 'utf8',
-    stdio: 'inherit',
+    stdio: options.capture ? 'pipe' : 'inherit',
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed`);
   }
+  return result.stdout;
 }
 
 async function waitForPublishedPackage(name, expectedVersion, registry) {

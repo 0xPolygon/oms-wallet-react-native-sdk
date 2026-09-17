@@ -131,7 +131,8 @@ plan for when automated tests are added.
   `package.json#workspaces`) — install its deps from the repo root with `yarn expo-example:install`.
 - Native builds (Android/iOS) are slow; validate JS-layer changes with `yarn lint && yarn typecheck`
   first; leave full native builds to CI.
-- Publishing is CI-only through Changesets and npm OIDC trusted publishing. See `PUBLISHING.md`.
+- Publishing is CI-only through Changesets and npm OIDC staged publishing. An npm maintainer must
+  approve each stage with 2FA. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
   pins normally remain equal, but do not manufacture native releases to match npm-only changes.
 - Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
@@ -143,8 +144,10 @@ plan for when automated tests are added.
 - **`verification.yml`** — Yarn verification, package/API gates, Expo autolinking, Android, and iOS.
 - **`changeset-check.yml`** — requires a user-facing or empty Changeset on pull requests.
 - **`quick-checks.yml`** — fast verification on pushes to non-master branches.
-- **`release.yml`** — verifies `master`, opens release pull requests, publishes through npm OIDC,
-  and opens the post-publish Expo example update.
+- **`release.yml`** — verifies `master`, opens release pull requests, and stages release candidates
+  through npm OIDC for maintainer approval.
+- **`post-publish-expo-update.yml`** — after npm approval, verifies the published version and opens
+  the standalone Expo example update.
 - **GitHub CodeQL default setup** — GitHub-managed Actions, JavaScript/TypeScript, and Ruby
   analysis. Kotlin and Swift CodeQL are intentionally omitted to avoid duplicating the required
   native builds on every pull request.
@@ -173,6 +176,6 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
 | Native SDK version (Swift / Kotlin)       | `OmsWalletReactNativeSdk.podspec`, `android/build.gradle` |
 | `package.json` scripts or test commands   | `TESTING.md`, `.github/workflows/verification.yml`        |
 | Node version (`.nvmrc`)                   | `turbo.json#globalDependencies`, CI setup action          |
-| Publish/release behavior                  | `PUBLISHING.md`, `.changeset/config.json`, `release.yml`  |
+| Publish/release behavior                  | `PUBLISHING.md`, `.changeset/config.json`, release workflows |
 | Repo structure (new top-level dirs)       | `AGENTS.md` structure section                             |
 | Contributing workflow                     | `CONTRIBUTING.md`, `README.md`                            |
