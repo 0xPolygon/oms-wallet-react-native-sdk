@@ -15,7 +15,11 @@ import type {
   SolanaBalance,
   WalletAccount,
 } from '../src/types';
-import type { OMSWalletError, OMSWalletUpstreamError } from '../src/errors';
+import type {
+  OMSWalletError,
+  OMSWalletErrorCode,
+  OMSWalletUpstreamError,
+} from '../src/errors';
 
 type Assert<T extends true> = T;
 type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
@@ -87,4 +91,10 @@ export function narrowTokenBalance(
 export type PublicErrorsExcludeNull = Assert<
   ExcludesNull<OMSWalletError['operation']> &
     ExcludesNull<OMSWalletUpstreamError['message']>
+>;
+
+export type AttestationErrorCodeIsPublic = Assert<
+  'OMS_ATTESTATION_VERIFICATION_FAILED' extends OMSWalletErrorCode
+    ? true
+    : false
 >;

@@ -37,6 +37,7 @@ const requiredFiles = [
   'API.md',
   'CHANGELOG.md',
   'LICENSE',
+  'MIGRATION.md',
   'OmsWalletReactNativeSdk.podspec',
   'README.md',
   'android/build.gradle',

@@ -566,6 +566,28 @@ test('normalizes native OMS errors into the public error shape', async () => {
   });
 });
 
+test('normalizes wallet import attestation failures', () => {
+  const { normalizeNativeError, OMSWalletError } = require(errorsModulePath);
+  const nativeError = Object.assign(
+    new Error('WaaS attestation verification failed'),
+    {
+      code: 'OMS_ATTESTATION_VERIFICATION_FAILED',
+      userInfo: {
+        code: 'OMS_ATTESTATION_VERIFICATION_FAILED',
+        operation: 'wallet.getWalletImportRecipientKey',
+        retryable: false,
+      },
+    }
+  );
+
+  const error = normalizeNativeError(nativeError);
+  assert.equal(error instanceof OMSWalletError, true);
+  assert.equal(error.code, 'OMS_ATTESTATION_VERIFICATION_FAILED');
+  assert.equal(error.operation, 'wallet.getWalletImportRecipientKey');
+  assert.equal(error.retryable, false);
+  assert.equal(error.cause, nativeError);
+});
+
 test('normalizes native operation names to the React Native API spelling', () => {
   const { normalizeNativeError } = require(errorsModulePath);
   const operations = [

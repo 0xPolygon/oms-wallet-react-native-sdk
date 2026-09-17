@@ -156,7 +156,7 @@ await omsWallet.wallet.sendSolanaTransfer({
 });
 ```
 
-`amount` uses the asset's smallest unit. `importWallet` accepts an Ethereum private key or a Solana seed/keypair as text or raw bytes and encrypts it locally for the attested wallet-import transport.
+`amount` uses the asset's smallest unit. `importWallet` accepts an Ethereum private key as 32 raw bytes or 64 hexadecimal digits, optionally prefixed with `0x`. Solana imports accept a 32-byte seed or 64-byte keypair as raw bytes, or the base58 encoding of either. The native SDK encrypts the key locally for the attested wallet-import transport.
 
 ## Remote Access
 
@@ -183,7 +183,7 @@ const solanaBalances = await omsWallet.indexer.getSolanaBalances({
 
 - [React Native SDK guide](https://docs.polygon.technology/wallets/sdk/react-native/quickstart)
 - [Public TypeScript API](./API.md)
-- [Migrate from 0.2 to 0.3](./MIGRATION.md)
+- [Migrate from 0.2.0 to 0.3.0](./MIGRATION.md)
 
 ## Examples
 
