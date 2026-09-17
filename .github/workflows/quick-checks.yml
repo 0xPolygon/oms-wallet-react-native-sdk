@@ -4,6 +4,7 @@ on:
   push:
     branches-ignore:
       - master
+      - 'changesets-ghcommit-temp/**'
   workflow_dispatch:
 
 concurrency:
