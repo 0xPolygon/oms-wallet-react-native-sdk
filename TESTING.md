@@ -41,7 +41,7 @@ Android and iOS CI checks pass before merging; validate locally when you need fa
 
 ## Test setup
 
-- **Unit tests** — JavaScript bridge and pure TypeScript behavior in `src/`.
+- **Unit tests** — JavaScript bridge behavior, pure TypeScript behavior, and release helper logic.
   - Runner: Node's built-in `node:test`.
   - Location: `test/*.test.js`.
   - Command: `yarn test`.
@@ -62,6 +62,8 @@ Android and iOS CI checks pass before merging; validate locally when you need fa
 - Every new exported function should have at least one happy-path unit test.
 - Keep unit tests free of native-bridge calls — mock `NativeOmsWalletReactNativeSdk` at the module
   boundary.
+- Keep release helper validation importable and side-effect free; CI-only staging stays behind each
+  script's direct-execution guard.
 
 ---
 
