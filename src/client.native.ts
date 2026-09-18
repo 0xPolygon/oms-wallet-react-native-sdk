@@ -1,11 +1,13 @@
 import type { EventSubscription } from 'react-native';
+import type { Network } from './networks';
 import NativeOmsWalletReactNativeSdk from './NativeOmsWalletReactNativeSdk';
 import { normalizeNativeError } from './errors';
 import { isOmsRelayOidcProvider } from './oidcProviders';
 import type {
   OmsNativeFeeOptionSelectionRequest,
   OmsNativeCompleteAuthResult,
-  OmsNativeListAccessResponse,
+  OmsNativeAccessGrant,
+  OmsNativeAccessGrantPage,
   OmsNativeFeeOption,
   OmsNativeFeeOptionWithBalance,
   OmsNativeOidcRedirectAuthResult,
@@ -25,28 +27,35 @@ import type {
   OmsNativeTransactionTransfer,
   OmsNativeWalletAccount,
   OmsNativeWalletActivationResult,
+  OmsNativeSmartSessionGrant,
+  OmsNativeSolanaBalance,
 } from './NativeOmsWalletReactNativeSdk';
 import type {
+  AccessGrant,
+  AccessGrantPage,
+  AuthorizeRemoteAccessParams,
+  AuthorizedRemoteAccess,
   CallContractParams,
   CompleteEmailAuthParams,
   CreateWalletParams,
   GetBalancesParams,
   GetIdTokenParams,
+  GetSolanaBalancesParams,
   GetTransactionHistoryParams,
   HandleOidcRedirectCallbackParams,
   ListAccessPageParams,
-  ListAccessPagesParams,
   ListAccessParams,
   BalancesResult,
   OMSWalletParams,
   OMSWalletSessionExpiredEvent,
   OMSWalletSessionState,
   CompleteAuthResult,
-  CredentialInfo,
+  ImportEncryptedWalletParams,
+  ImportWalletParams,
+  IsValidSolanaMessageSignatureParams,
   FeeOption,
   FeeOptionWithBalance,
   FeeOptionSelector,
-  ListAccessResponse,
   OidcRedirectAuthResult,
   PendingWalletSelection,
   SendTransactionResponse,
@@ -56,7 +65,9 @@ import type {
   WalletAccount,
   WalletActivationResult,
   SendTransactionParams,
+  SendSolanaTransferParams,
   SignMessageParams,
+  SignSolanaMessageParams,
   SignInWithOidcIdTokenParams,
   SignTypedDataParams,
   StartEmailAuthParams,
@@ -73,6 +84,16 @@ import type {
   TransactionTransfer,
   IsValidMessageSignatureParams,
   IsValidTypedDataSignatureParams,
+  RemoteAccessSession,
+  RemoteCredentialMetadata,
+  RevokeAccessParams,
+  SmartSessionGrant,
+  SmartSessionGrantUsage,
+  SolanaBalance,
+  SolanaBalancesResult,
+  SolanaFungibleTokenBalance,
+  WalletImportCipherSuite,
+  WalletImportRecipientKey,
 } from './types';
 
 const OmsWalletReactNativeSdk = new Proxy(NativeOmsWalletReactNativeSdk, {
@@ -121,6 +142,22 @@ function stringifyOptionalJson(value: unknown | undefined): string | null {
 
 function stringifyOptionalNumber(value: number | undefined): string | null {
   return value == null ? null : String(value);
+}
+
+function serializePrivateKey(privateKey: string | Uint8Array): {
+  text: string | null;
+  bytesJson: string | null;
+} {
+  if (typeof privateKey === 'string') {
+    return { text: privateKey, bytesJson: null };
+  }
+  if (!(privateKey instanceof Uint8Array)) {
+    throw new Error('privateKey must be a string or Uint8Array');
+  }
+  return {
+    text: null,
+    bytesJson: stringifyRequiredJson(Array.from(privateKey), 'privateKey'),
+  };
 }
 
 function serializeOidcProvider(params: StartOidcRedirectAuthParams): string {
@@ -264,6 +301,7 @@ async function handleFeeOptionSelectionRequest(
     await OmsWalletReactNativeSdk.respondToFeeOptionSelection(
       event.requestId,
       null,
+      null,
       `Fee option selector ${event.selectorId} is no longer registered`
     );
     return;
@@ -276,11 +314,13 @@ async function handleFeeOptionSelectionRequest(
     await OmsWalletReactNativeSdk.respondToFeeOptionSelection(
       event.requestId,
       selection?.token ?? null,
+      selection?.index == null ? null : String(selection.index),
       null
     );
   } catch (error) {
     await OmsWalletReactNativeSdk.respondToFeeOptionSelection(
       event.requestId,
+      null,
       null,
       errorMessage(error)
     );
@@ -288,8 +328,15 @@ async function handleFeeOptionSelectionRequest(
 }
 
 function hydrateWalletType(value: string): WalletAccount['type'] {
-  if (value !== 'ethereum') {
+  if (value !== 'ethereum' && value !== 'solana') {
     throw new Error(`Unsupported wallet type from native SDK: ${value}`);
+  }
+  return value;
+}
+
+function hydrateWalletKeyOrigin(value: string): WalletAccount['keyOrigin'] {
+  if (value !== 'enclave' && value !== 'imported') {
+    throw new Error(`Unsupported wallet key origin from native SDK: ${value}`);
   }
   return value;
 }
@@ -459,7 +506,10 @@ function hydrateFeeOptionWithBalance(
 ): FeeOptionWithBalance {
   return {
     feeOption: hydrateFeeOption(option.feeOption),
-    selection: option.selection,
+    selection: {
+      token: option.selection.token,
+      index: optionalNativeField(option.selection.index),
+    },
     balance:
       option.balance == null ? undefined : hydrateTokenBalance(option.balance),
     available: optionalNativeField(option.available),
@@ -548,6 +598,7 @@ function hydrateWalletAccount(wallet: OmsNativeWalletAccount): WalletAccount {
     type: hydrateWalletType(wallet.type),
     address: wallet.address,
     reference: optionalNativeField(wallet.reference),
+    keyOrigin: hydrateWalletKeyOrigin(wallet.keyOrigin),
   };
 }
 
@@ -758,11 +809,77 @@ function hydrateOidcRedirectAuthResult(
   }
 }
 
-function hydrateListAccessResponse(
-  response: OmsNativeListAccessResponse
-): ListAccessResponse {
+function hydrateSmartSessionGrant(
+  grant: OmsNativeSmartSessionGrant
+): SmartSessionGrant {
+  if (grant.kind === 'nativeTransfer') {
+    return {
+      kind: 'nativeTransfer',
+      to: requireNativeField(grant.to, 'to', 'native transfer grant'),
+      limit: grant.limit,
+    };
+  }
+  if (grant.kind === 'erc20Transfer') {
+    return {
+      kind: 'erc20Transfer',
+      token: requireNativeField(grant.token, 'token', 'ERC-20 transfer grant'),
+      to: optionalNativeField(grant.to),
+      limit: grant.limit,
+      cumulative: optionalNativeField(grant.cumulative),
+    };
+  }
+  throw new Error(
+    `Unsupported smart-session grant from native SDK: ${grant.kind}`
+  );
+}
+
+function hydrateRemoteCredentialMetadata(metadata: {
+  appUrl: string;
+  appName: string;
+  appLogoUrl: string;
+  custom: object;
+}): RemoteCredentialMetadata {
   return {
-    credentials: response.credentials,
+    appUrl: metadata.appUrl,
+    appName: metadata.appName,
+    appLogoUrl: metadata.appLogoUrl,
+    custom: Object.fromEntries(
+      Object.entries(metadata.custom).map(([key, value]) => [
+        key,
+        String(value),
+      ])
+    ),
+  };
+}
+
+function hydrateAccessGrant(grant: OmsNativeAccessGrant): AccessGrant {
+  const credential = grant.credential;
+  if (grant.type === 'direct') {
+    return { type: 'direct', ...credential };
+  }
+  if (grant.type === 'remote') {
+    return {
+      type: 'remote',
+      ...credential,
+      sessionId: requireNativeField(
+        grant.sessionId,
+        'sessionId',
+        'remote access grant'
+      ),
+      metadata: hydrateRemoteCredentialMetadata(
+        requireNativeField(grant.metadata, 'metadata', 'remote access grant')
+      ),
+      grants: grant.grants.map(hydrateSmartSessionGrant),
+    };
+  }
+  throw new Error(`Unsupported access grant from native SDK: ${grant.type}`);
+}
+
+function hydrateAccessGrantPage(
+  response: OmsNativeAccessGrantPage
+): AccessGrantPage {
+  return {
+    grants: response.grants.map(hydrateAccessGrant),
     page:
       response.page == null
         ? undefined
@@ -771,6 +888,92 @@ function hydrateListAccessResponse(
             cursor: optionalNativeField(response.page.cursor),
           },
   };
+}
+
+function hydrateSolanaBalance(balance: OmsNativeSolanaBalance): SolanaBalance {
+  const common = {
+    network: hydrateSolanaNetwork(balance.network),
+    accountAddress: balance.accountAddress,
+    name: balance.name,
+    symbol: balance.symbol,
+    decimals: balance.decimals,
+    balance: balance.balance,
+    formattedBalance: balance.formattedBalance,
+    imageUrl: optionalNativeField(balance.imageUrl),
+    metadataUri: optionalNativeField(balance.metadataUri),
+    verificationStatus: hydrateSolanaVerificationStatus(
+      balance.verificationStatus
+    ),
+    verificationSource: hydrateSolanaVerificationSource(
+      balance.verificationSource
+    ),
+    priceUSD: optionalNativeField(balance.priceUSD),
+    balanceUSD: optionalNativeField(balance.balanceUSD),
+  };
+  if (balance.assetType === 'native') {
+    return { ...common, assetType: 'native' };
+  }
+  if (balance.assetType === 'fungible-token') {
+    return {
+      ...common,
+      assetType: 'fungible-token',
+      tokenProgram: hydrateSolanaTokenProgram(
+        requireNativeField(
+          balance.tokenProgram,
+          'tokenProgram',
+          'Solana token balance'
+        )
+      ),
+      mintAddress: requireNativeField(
+        balance.mintAddress,
+        'mintAddress',
+        'Solana token balance'
+      ),
+    };
+  }
+  throw new Error(
+    `Unsupported Solana asset type from native SDK: ${balance.assetType}`
+  );
+}
+
+function hydrateSolanaNetwork(value: string): SolanaBalance['network'] {
+  if (value !== 'solana:devnet' && value !== 'solana:mainnet') {
+    throw new Error(`Unsupported Solana network from native SDK: ${value}`);
+  }
+  return value;
+}
+
+function hydrateSolanaVerificationStatus(
+  value: string
+): SolanaBalance['verificationStatus'] {
+  if (value !== 'verified' && value !== 'unverified' && value !== 'unknown') {
+    throw new Error(
+      `Unsupported Solana verification status from native SDK: ${value}`
+    );
+  }
+  return value;
+}
+
+function hydrateSolanaVerificationSource(
+  value: string
+): SolanaBalance['verificationSource'] {
+  if (value !== 'jupiter' && value !== 'solflare-utl' && value !== 'none') {
+    throw new Error(
+      `Unsupported Solana verification source from native SDK: ${value}`
+    );
+  }
+  return value;
+}
+
+function hydrateSolanaTokenProgram(
+  value: string
+): SolanaFungibleTokenBalance['tokenProgram'] {
+  if (value !== 'spl-token' && value !== 'token-2022') {
+    throw new Error(
+      `Unsupported Solana token program from native SDK: ${value}`
+    );
+  }
+  return value;
 }
 
 export class OMSWallet {
@@ -957,6 +1160,55 @@ export class OMSWalletClient {
     return hydrateWalletActivationResult(result);
   }
 
+  async importWallet(
+    params: ImportWalletParams
+  ): Promise<WalletActivationResult> {
+    await ensureReady(this.owner);
+    const privateKey = serializePrivateKey(params.privateKey);
+    const result = await OmsWalletReactNativeSdk.importWallet(
+      nativeClientId(this.owner),
+      params.type,
+      privateKey.text,
+      privateKey.bytesJson,
+      params.reference ?? null
+    );
+    resetSessionExpiredReplay(this.owner);
+    return hydrateWalletActivationResult(result);
+  }
+
+  async getWalletImportRecipientKey(params: {
+    cipherSuite: WalletImportCipherSuite;
+  }): Promise<WalletImportRecipientKey> {
+    await ensureReady(this.owner);
+    const key = await OmsWalletReactNativeSdk.getWalletImportRecipientKey(
+      nativeClientId(this.owner),
+      params.cipherSuite
+    );
+    if (key.cipherSuite !== params.cipherSuite) {
+      throw new Error(
+        `Unexpected wallet import cipher suite from native SDK: ${key.cipherSuite}`
+      );
+    }
+    return { ...key, cipherSuite: params.cipherSuite };
+  }
+
+  async importEncryptedWallet(
+    params: ImportEncryptedWalletParams
+  ): Promise<WalletActivationResult> {
+    await ensureReady(this.owner);
+    const result = await OmsWalletReactNativeSdk.importEncryptedWallet(
+      nativeClientId(this.owner),
+      params.type,
+      params.keyMaterial.keyId,
+      params.keyMaterial.cipherSuite,
+      params.keyMaterial.encapsulatedKey,
+      params.keyMaterial.ciphertext,
+      params.reference ?? null
+    );
+    resetSessionExpiredReplay(this.owner);
+    return hydrateWalletActivationResult(result);
+  }
+
   async signOut(): Promise<void> {
     await ensureReady(this.owner);
     resetSessionExpiredReplay(this.owner);
@@ -968,6 +1220,14 @@ export class OMSWalletClient {
     return OmsWalletReactNativeSdk.signMessage(
       nativeClientId(this.owner),
       String(params.network.id),
+      params.message
+    );
+  }
+
+  async signSolanaMessage(params: SignSolanaMessageParams): Promise<string> {
+    await ensureReady(this.owner);
+    return OmsWalletReactNativeSdk.signSolanaMessage(
+      nativeClientId(this.owner),
       params.message
     );
   }
@@ -1029,6 +1289,30 @@ export class OMSWalletClient {
     );
   }
 
+  async sendSolanaTransfer(
+    params: SendSolanaTransferParams
+  ): Promise<SendTransactionResponse> {
+    await ensureReady(this.owner);
+    return hydrateSendTransactionResponse(
+      await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
+        OmsWalletReactNativeSdk.sendSolanaTransfer(
+          nativeClientId(this.owner),
+          params.network,
+          params.asset,
+          params.to,
+          params.amount,
+          params.mode ?? null,
+          selectorId,
+          params.waitForStatus ?? true,
+          stringifyOptionalNumber(params.statusPolling?.timeoutMs),
+          stringifyOptionalNumber(params.statusPolling?.intervalMs),
+          stringifyOptionalNumber(params.statusPolling?.fastIntervalMs),
+          stringifyOptionalNumber(params.statusPolling?.fastPollCount)
+        )
+      )
+    );
+  }
+
   async getTransactionStatus(
     txnId: string
   ): Promise<TransactionStatusResponse> {
@@ -1048,6 +1332,17 @@ export class OMSWalletClient {
     return OmsWalletReactNativeSdk.verifyMessageSignature(
       nativeClientId(this.owner),
       String(params.network.id),
+      params.message,
+      params.signature
+    );
+  }
+
+  async isValidSolanaMessageSignature(
+    params: IsValidSolanaMessageSignatureParams
+  ): Promise<boolean> {
+    await ensureReady(this.owner);
+    return OmsWalletReactNativeSdk.verifySolanaMessageSignature(
+      nativeClientId(this.owner),
       params.message,
       params.signature
     );
@@ -1074,47 +1369,111 @@ export class OMSWalletClient {
     );
   }
 
-  async listAccess(params: ListAccessParams = {}): Promise<CredentialInfo[]> {
+  async inspectRemoteCredential(params: {
+    credentialId: string;
+  }): Promise<RemoteCredentialMetadata> {
     await ensureReady(this.owner);
-    return OmsWalletReactNativeSdk.listAccess(
-      nativeClientId(this.owner),
-      params.pageSize == null ? null : String(params.pageSize)
+    return hydrateRemoteCredentialMetadata(
+      await OmsWalletReactNativeSdk.inspectRemoteCredential(
+        nativeClientId(this.owner),
+        params.credentialId
+      )
     );
   }
 
+  async authorizeRemoteAccess(
+    params: AuthorizeRemoteAccessParams
+  ): Promise<AuthorizedRemoteAccess> {
+    await ensureReady(this.owner);
+    const access = await OmsWalletReactNativeSdk.authorizeRemoteAccess(
+      nativeClientId(this.owner),
+      params.credentialId,
+      String(params.network.id),
+      stringifyRequiredJson(params.grants, 'grants'),
+      params.expiresAt,
+      params.sessionId ?? null
+    );
+    return access;
+  }
+
+  async listAccess(params: ListAccessParams = {}): Promise<AccessGrant[]> {
+    await ensureReady(this.owner);
+    return (
+      await OmsWalletReactNativeSdk.listAccess(
+        nativeClientId(this.owner),
+        params.pageSize == null ? null : String(params.pageSize),
+        params.type ?? null
+      )
+    ).map(hydrateAccessGrant);
+  }
+
   async *listAccessPages(
-    params: ListAccessPagesParams = {}
-  ): AsyncGenerator<ListAccessResponse, void, void> {
+    params: ListAccessParams = {}
+  ): AsyncGenerator<AccessGrantPage, void, void> {
     let cursor: string | undefined;
 
     do {
       const response = await this.listAccessPage({
         pageSize: params.pageSize,
+        type: params.type,
         cursor,
       });
       yield response;
-      cursor = response.page?.cursor;
+      cursor = response.page?.cursor || undefined;
     } while (cursor !== undefined);
   }
 
   async listAccessPage(
     params: ListAccessPageParams = {}
-  ): Promise<ListAccessResponse> {
+  ): Promise<AccessGrantPage> {
     await ensureReady(this.owner);
-    return hydrateListAccessResponse(
+    return hydrateAccessGrantPage(
       await OmsWalletReactNativeSdk.listAccessPage(
         nativeClientId(this.owner),
         params.pageSize == null ? null : String(params.pageSize),
-        params.cursor ?? null
+        params.cursor ?? null,
+        params.type ?? null
       )
     );
   }
 
-  async revokeAccess(targetCredentialId: string): Promise<void> {
+  async getRemoteAccessSession(params: {
+    sessionId: string;
+  }): Promise<RemoteAccessSession> {
+    await ensureReady(this.owner);
+    const session = await OmsWalletReactNativeSdk.getRemoteAccessSession(
+      nativeClientId(this.owner),
+      params.sessionId
+    );
+    return {
+      ...session,
+      grants: session.grants.map(hydrateSmartSessionGrant),
+    };
+  }
+
+  async getRemoteAccessSessionUsage(params: {
+    sessionId: string;
+    network: Network;
+  }): Promise<SmartSessionGrantUsage[]> {
+    await ensureReady(this.owner);
+    return (
+      await OmsWalletReactNativeSdk.getRemoteAccessSessionUsage(
+        nativeClientId(this.owner),
+        params.sessionId,
+        String(params.network.id)
+      )
+    ).map((usage) => ({
+      grant: hydrateSmartSessionGrant(usage.grant),
+      used: optionalNativeField(usage.used),
+    }));
+  }
+
+  async revokeAccess(params: RevokeAccessParams): Promise<void> {
     await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.revokeAccess(
       nativeClientId(this.owner),
-      targetCredentialId
+      params.credentialId,
+      params.sessionId ?? null
     );
   }
 }
@@ -1152,6 +1511,24 @@ export class OMSIndexerClient {
       page:
         result.page == null ? undefined : hydrateTokenBalancesPage(result.page),
       transactions: result.transactions.map(hydrateTransaction),
+    };
+  }
+
+  async getSolanaBalances(
+    params: GetSolanaBalancesParams
+  ): Promise<SolanaBalancesResult> {
+    await ensureReady(this.owner);
+    const result = await OmsWalletReactNativeSdk.getSolanaBalances(
+      nativeClientId(this.owner),
+      stringifyRequiredJson(params, 'params')
+    );
+    return {
+      status: result.status,
+      balances: result.balances.map(hydrateSolanaBalance),
+      errors: result.errors.map((error) => ({
+        network: hydrateSolanaNetwork(error.network),
+        reason: error.reason,
+      })),
     };
   }
 }

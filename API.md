@@ -90,6 +90,26 @@ useWallet(_walletId: string): Promise<WalletActivationResult>;
 createWallet(_params?: CreateWalletParams): Promise<WalletActivationResult>;
 ```
 
+### `OMSWalletClient.importWallet`
+
+```ts
+importWallet(_params: ImportWalletParams): Promise<WalletActivationResult>;
+```
+
+### `OMSWalletClient.getWalletImportRecipientKey`
+
+```ts
+getWalletImportRecipientKey(_params: {
+        cipherSuite: WalletImportCipherSuite;
+    }): Promise<WalletImportRecipientKey>;
+```
+
+### `OMSWalletClient.importEncryptedWallet`
+
+```ts
+importEncryptedWallet(_params: ImportEncryptedWalletParams): Promise<WalletActivationResult>;
+```
+
 ### `OMSWalletClient.signOut`
 
 ```ts
@@ -102,28 +122,59 @@ signOut(): Promise<void>;
 getIdToken(_params?: GetIdTokenParams): Promise<string>;
 ```
 
+### `OMSWalletClient.inspectRemoteCredential`
+
+```ts
+inspectRemoteCredential(_params: {
+        credentialId: string;
+    }): Promise<RemoteCredentialMetadata>;
+```
+
+### `OMSWalletClient.authorizeRemoteAccess`
+
+```ts
+authorizeRemoteAccess(_params: AuthorizeRemoteAccessParams): Promise<AuthorizedRemoteAccess>;
+```
+
 ### `OMSWalletClient.listAccess`
 
 ```ts
-listAccess(_params?: ListAccessParams): Promise<CredentialInfo[]>;
+listAccess(_params?: ListAccessParams): Promise<AccessGrant[]>;
 ```
 
 ### `OMSWalletClient.listAccessPages`
 
 ```ts
-listAccessPages(_params?: ListAccessPagesParams): AsyncGenerator<ListAccessResponse, void, void>;
+listAccessPages(_params?: ListAccessParams): AsyncGenerator<AccessGrantPage, void, void>;
 ```
 
 ### `OMSWalletClient.listAccessPage`
 
 ```ts
-listAccessPage(_params?: ListAccessPageParams): Promise<ListAccessResponse>;
+listAccessPage(_params?: ListAccessPageParams): Promise<AccessGrantPage>;
+```
+
+### `OMSWalletClient.getRemoteAccessSession`
+
+```ts
+getRemoteAccessSession(_params: {
+        sessionId: string;
+    }): Promise<RemoteAccessSession>;
+```
+
+### `OMSWalletClient.getRemoteAccessSessionUsage`
+
+```ts
+getRemoteAccessSessionUsage(_params: {
+        sessionId: string;
+        network: Network;
+    }): Promise<SmartSessionGrantUsage[]>;
 ```
 
 ### `OMSWalletClient.revokeAccess`
 
 ```ts
-revokeAccess(_targetCredentialId: string): Promise<void>;
+revokeAccess(_params: RevokeAccessParams): Promise<void>;
 ```
 
 ### `OmsRelayOidcProviders`
@@ -138,7 +189,13 @@ export declare const OmsRelayOidcProviders: Readonly<{
 ### `WalletType`
 
 ```ts
-export type WalletType = 'ethereum';
+export type WalletType = 'ethereum' | 'solana';
+```
+
+### `WalletKeyOrigin`
+
+```ts
+export type WalletKeyOrigin = 'enclave' | 'imported';
 ```
 
 ### `WalletSelectionBehavior`
@@ -208,6 +265,7 @@ export type WalletAccount = {
     type: WalletType;
     address: string;
     reference?: string;
+    keyOrigin: WalletKeyOrigin;
 };
 ```
 
@@ -220,10 +278,10 @@ export type WalletActivationResult = {
 };
 ```
 
-### `CredentialInfo`
+### `WalletCredential`
 
 ```ts
-export type CredentialInfo = {
+export type WalletCredential = {
     credentialId: string;
     expiresAt: string;
     isCaller: boolean;
@@ -236,7 +294,7 @@ export type CredentialInfo = {
 export type PendingWalletSelection = {
     walletType: WalletType;
     wallets: WalletAccount[];
-    credential: CredentialInfo;
+    credential: WalletCredential;
     selectWallet(walletId: string): Promise<WalletActivationResult>;
     createAndSelectWallet(reference?: string): Promise<WalletActivationResult>;
 };
@@ -250,14 +308,14 @@ export type CompleteAuthResult = {
     walletAddress: string;
     wallet: WalletAccount;
     wallets: WalletAccount[];
-    credential: CredentialInfo;
+    credential: WalletCredential;
     pendingSelection?: undefined;
 } | {
     type: 'walletSelection';
     walletAddress: undefined;
     wallet: undefined;
     wallets: WalletAccount[];
-    credential: CredentialInfo;
+    credential: WalletCredential;
     pendingSelection: PendingWalletSelection;
 };
 ```
@@ -393,6 +451,57 @@ export type CreateWalletParams = {
 };
 ```
 
+### `WalletImportCipherSuite`
+
+```ts
+export type WalletImportCipherSuite = 'x25519-sha256-aes256gcm' | 'x25519-sha256-chacha20poly1305' | 'p256-sha256-aes256gcm' | 'p256-sha256-chacha20poly1305';
+```
+
+### `ImportWalletParams`
+
+```ts
+export type ImportWalletParams = {
+    type: 'ethereum';
+    privateKey: string | Uint8Array;
+    reference?: string;
+} | {
+    type: 'solana';
+    privateKey: string | Uint8Array;
+    reference?: string;
+};
+```
+
+### `WalletImportRecipientKey`
+
+```ts
+export type WalletImportRecipientKey = {
+    keyId: string;
+    cipherSuite: WalletImportCipherSuite;
+    publicKey: string;
+};
+```
+
+### `EncryptedWalletImportKeyMaterial`
+
+```ts
+export type EncryptedWalletImportKeyMaterial = {
+    keyId: string;
+    cipherSuite: WalletImportCipherSuite;
+    encapsulatedKey: string;
+    ciphertext: string;
+};
+```
+
+### `ImportEncryptedWalletParams`
+
+```ts
+export type ImportEncryptedWalletParams = {
+    type: WalletType;
+    keyMaterial: EncryptedWalletImportKeyMaterial;
+    reference?: string;
+};
+```
+
 ### `GetIdTokenParams`
 
 ```ts
@@ -411,12 +520,123 @@ export type AccessPage = {
 };
 ```
 
-### `ListAccessResponse`
+### `RemoteCredentialMetadata`
 
 ```ts
-export type ListAccessResponse = {
-    credentials: CredentialInfo[];
+export type RemoteCredentialMetadata = {
+    appUrl: string;
+    appName: string;
+    appLogoUrl: string;
+    custom: Record<string, string>;
+};
+```
+
+### `SmartSessionGrant`
+
+```ts
+export type SmartSessionGrant = {
+    kind: 'nativeTransfer';
+    to: string;
+    limit: string;
+} | {
+    kind: 'erc20Transfer';
+    token: string;
+    to?: string;
+    limit: string;
+    cumulative?: boolean;
+};
+```
+
+### `DirectAccessGrant`
+
+```ts
+export type DirectAccessGrant = WalletCredential & {
+    type: 'direct';
+};
+```
+
+### `RemoteAccessGrant`
+
+```ts
+export type RemoteAccessGrant = WalletCredential & {
+    type: 'remote';
+    sessionId: string;
+    metadata: RemoteCredentialMetadata;
+    grants: SmartSessionGrant[];
+};
+```
+
+### `AccessGrant`
+
+```ts
+export type AccessGrant = DirectAccessGrant | RemoteAccessGrant;
+```
+
+### `AccessGrantType`
+
+```ts
+export type AccessGrantType = AccessGrant['type'];
+```
+
+### `AccessGrantPage`
+
+```ts
+export type AccessGrantPage = {
+    grants: AccessGrant[];
     page?: AccessPage;
+};
+```
+
+### `AuthorizeRemoteAccessParams`
+
+```ts
+export type AuthorizeRemoteAccessParams = {
+    credentialId: string;
+    network: Network;
+    grants: SmartSessionGrant[];
+    expiresAt: string;
+    sessionId?: string;
+};
+```
+
+### `AuthorizedRemoteAccess`
+
+```ts
+export type AuthorizedRemoteAccess = {
+    walletId: string;
+    sessionId: string;
+    expiresAt: string;
+};
+```
+
+### `RemoteAccessSession`
+
+```ts
+export type RemoteAccessSession = {
+    sessionId: string;
+    walletId: string;
+    signerAddress: string;
+    grants: SmartSessionGrant[];
+    chainId: number;
+    expiresAt: string;
+};
+```
+
+### `SmartSessionGrantUsage`
+
+```ts
+export type SmartSessionGrantUsage = {
+    grant: SmartSessionGrant;
+    used?: string;
+};
+```
+
+### `RevokeAccessParams`
+
+```ts
+export type RevokeAccessParams = {
+    credentialId: string;
+    sessionId?: string;
 };
 ```
 
@@ -425,14 +645,7 @@ export type ListAccessResponse = {
 ```ts
 export type ListAccessParams = {
     pageSize?: number;
-};
-```
-
-### `ListAccessPagesParams`
-
-```ts
-export type ListAccessPagesParams = {
-    pageSize?: number;
+    type?: AccessGrantType;
 };
 ```
 
@@ -442,6 +655,7 @@ export type ListAccessPagesParams = {
 export type ListAccessPageParams = {
     pageSize?: number;
     cursor?: string;
+    type?: AccessGrantType;
 };
 ```
 
@@ -451,6 +665,12 @@ export type ListAccessPageParams = {
 
 ```ts
 signMessage(_params: SignMessageParams): Promise<string>;
+```
+
+### `OMSWalletClient.signSolanaMessage`
+
+```ts
+signSolanaMessage(_params: SignSolanaMessageParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.signTypedData`
@@ -463,6 +683,12 @@ signTypedData(_params: SignTypedDataParams): Promise<string>;
 
 ```ts
 sendTransaction(_params: SendTransactionParams): Promise<SendTransactionResponse>;
+```
+
+### `OMSWalletClient.sendSolanaTransfer`
+
+```ts
+sendSolanaTransfer(_params: SendSolanaTransferParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.callContract`
@@ -481,6 +707,12 @@ getTransactionStatus(_txnId: string): Promise<TransactionStatusResponse>;
 
 ```ts
 isValidMessageSignature(_params: IsValidMessageSignatureParams): Promise<boolean>;
+```
+
+### `OMSWalletClient.isValidSolanaMessageSignature`
+
+```ts
+isValidSolanaMessageSignature(_params: IsValidSolanaMessageSignatureParams): Promise<boolean>;
 ```
 
 ### `OMSWalletClient.isValidTypedDataSignature`
@@ -506,6 +738,14 @@ export type SignMessageParams = {
 };
 ```
 
+### `SignSolanaMessageParams`
+
+```ts
+export type SignSolanaMessageParams = {
+    message: string;
+};
+```
+
 ### `SignTypedDataParams`
 
 ```ts
@@ -520,6 +760,15 @@ export type SignTypedDataParams = {
 ```ts
 export type IsValidMessageSignatureParams = {
     network: Network;
+    message: string;
+    signature: string;
+};
+```
+
+### `IsValidSolanaMessageSignatureParams`
+
+```ts
+export type IsValidSolanaMessageSignatureParams = {
     message: string;
     signature: string;
 };
@@ -623,6 +872,7 @@ export type FeeOption = {
 ```ts
 export type FeeOptionSelection = {
     token: string;
+    index?: number;
 };
 ```
 
@@ -660,6 +910,21 @@ export type SendTransactionParams = {
 };
 ```
 
+### `SendSolanaTransferParams`
+
+```ts
+export type SendSolanaTransferParams = {
+    network: SolanaNetwork;
+    asset: string;
+    to: string;
+    amount: string;
+    mode?: TransactionMode;
+    selectFeeOption?: FeeOptionSelector;
+    waitForStatus?: boolean;
+    statusPolling?: TransactionStatusPollingOptions;
+};
+```
+
 ### `CallContractParams`
 
 ```ts
@@ -687,6 +952,12 @@ getBalances(_params: GetBalancesParams): Promise<BalancesResult>;
 
 ```ts
 getTransactionHistory(_params: GetTransactionHistoryParams): Promise<TransactionHistoryResult>;
+```
+
+### `OMSIndexerClient.getSolanaBalances`
+
+```ts
+getSolanaBalances(_params: GetSolanaBalancesParams): Promise<SolanaBalancesResult>;
 ```
 
 ### `IndexerNetworkType`
@@ -867,6 +1138,104 @@ export type GetBalancesParams = {
     tokenIds?: string[];
     contractStatus?: ContractVerificationStatus;
     page?: TokenBalancesPageRequest;
+};
+```
+
+### `SolanaVerificationStatus`
+
+```ts
+export type SolanaVerificationStatus = 'verified' | 'unverified' | 'unknown';
+```
+
+### `SolanaVerificationSource`
+
+```ts
+export type SolanaVerificationSource = 'jupiter' | 'solflare-utl' | 'none';
+```
+
+### `SolanaNativeBalance`
+
+```ts
+export type SolanaNativeBalance = {
+    network: SolanaNetwork;
+    accountAddress: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    balance: string;
+    formattedBalance: string;
+    imageUrl?: string;
+    metadataUri?: string;
+    verificationStatus: SolanaVerificationStatus;
+    verificationSource: SolanaVerificationSource;
+    priceUSD?: string;
+    balanceUSD?: string;
+} & {
+    assetType: 'native';
+    tokenProgram?: undefined;
+    mintAddress?: undefined;
+};
+```
+
+### `SolanaFungibleTokenBalance`
+
+```ts
+export type SolanaFungibleTokenBalance = {
+    network: SolanaNetwork;
+    accountAddress: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    balance: string;
+    formattedBalance: string;
+    imageUrl?: string;
+    metadataUri?: string;
+    verificationStatus: SolanaVerificationStatus;
+    verificationSource: SolanaVerificationSource;
+    priceUSD?: string;
+    balanceUSD?: string;
+} & {
+    assetType: 'fungible-token';
+    tokenProgram: 'spl-token' | 'token-2022';
+    mintAddress: string;
+};
+```
+
+### `SolanaBalance`
+
+```ts
+export type SolanaBalance = SolanaNativeBalance | SolanaFungibleTokenBalance;
+```
+
+### `SolanaNetworkError`
+
+```ts
+export type SolanaNetworkError = {
+    network: SolanaNetwork;
+    reason: string;
+};
+```
+
+### `GetSolanaBalancesParams`
+
+```ts
+export type GetSolanaBalancesParams = {
+    walletAddress: string;
+    networks?: SolanaNetwork[];
+    includeMetadata?: boolean;
+    omitNativeBalances?: boolean;
+    mintAddresses?: string[];
+    excludedMintAddresses?: string[];
+};
+```
+
+### `SolanaBalancesResult`
+
+```ts
+export type SolanaBalancesResult = {
+    status: number;
+    balances: SolanaBalance[];
+    errors: SolanaNetworkError[];
 };
 ```
 
@@ -1069,6 +1438,21 @@ export declare const Networks: Readonly<{
 }>;
 ```
 
+### `SolanaNetwork`
+
+```ts
+export type SolanaNetwork = (typeof SolanaNetworks)[keyof typeof SolanaNetworks];
+```
+
+### `SolanaNetworks`
+
+```ts
+export declare const SolanaNetworks: Readonly<{
+    readonly devnet: "solana:devnet";
+    readonly mainnet: "solana:mainnet";
+}>;
+```
+
 ### `findNetworkById`
 
 ```ts
@@ -1114,7 +1498,7 @@ export declare function formatUnits(value: string | bigint, decimals?: number): 
 ### `OMSWalletErrorCode`
 
 ```ts
-export type OMSWalletErrorCode = 'OMS_HTTP_ERROR' | 'OMS_INVALID_RESPONSE' | 'OMS_REQUEST_FAILED' | 'OMS_AUTH_COMMITMENT_CONSUMED' | 'OMS_SESSION_MISSING' | 'OMS_SESSION_EXPIRED' | 'OMS_WALLET_SELECTION_STALE' | 'OMS_WALLET_SELECTION_UNAVAILABLE' | 'OMS_WALLET_SELECTION_IN_FLIGHT' | 'OMS_TRANSACTION_EXECUTION_UNCONFIRMED' | 'OMS_TRANSACTION_STATUS_LOOKUP_FAILED' | 'OMS_VALIDATION_ERROR' | 'OMS_STORAGE_ERROR';
+export type OMSWalletErrorCode = 'OMS_HTTP_ERROR' | 'OMS_INVALID_RESPONSE' | 'OMS_REQUEST_FAILED' | 'OMS_AUTH_COMMITMENT_CONSUMED' | 'OMS_SESSION_MISSING' | 'OMS_SESSION_EXPIRED' | 'OMS_WALLET_SELECTION_STALE' | 'OMS_WALLET_SELECTION_UNAVAILABLE' | 'OMS_WALLET_SELECTION_IN_FLIGHT' | 'OMS_TRANSACTION_EXECUTION_UNCONFIRMED' | 'OMS_TRANSACTION_STATUS_LOOKUP_FAILED' | 'OMS_VALIDATION_ERROR' | 'OMS_STORAGE_ERROR' | 'OMS_ATTESTATION_VERIFICATION_FAILED';
 ```
 
 ### `OMSWalletUpstreamError`

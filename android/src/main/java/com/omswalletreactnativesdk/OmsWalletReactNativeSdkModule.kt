@@ -14,20 +14,34 @@ import technology.polygon.omswallet.OMSWalletOidcSessionAuthFlow
 import technology.polygon.omswallet.OMSWalletSessionState
 import technology.polygon.omswallet.OMSWalletException
 import technology.polygon.omswallet.OMSWalletUpstreamError
+import technology.polygon.omswallet.SolanaNetwork
 import technology.polygon.omswallet.models.AbiArg
+import technology.polygon.omswallet.models.AccessGrant
+import technology.polygon.omswallet.models.AccessGrantPage
+import technology.polygon.omswallet.models.AccessGrantType
+import technology.polygon.omswallet.models.AuthorizedRemoteAccess
 import technology.polygon.omswallet.models.ContractVerificationStatus
-import technology.polygon.omswallet.models.CredentialInfo
+import technology.polygon.omswallet.models.EncryptedWalletImportKeyMaterial
 import technology.polygon.omswallet.models.FeeOption
 import technology.polygon.omswallet.models.FeeOptionSelection
 import technology.polygon.omswallet.models.FeeOptionSelector
 import technology.polygon.omswallet.models.FeeOptionWithBalance
 import technology.polygon.omswallet.models.FeeToken
 import technology.polygon.omswallet.models.IndexerNetworkType
-import technology.polygon.omswallet.models.ListAccessResponse
 import technology.polygon.omswallet.models.MetadataOptions
 import technology.polygon.omswallet.models.NativeTokenBalance
 import technology.polygon.omswallet.models.Page
+import technology.polygon.omswallet.models.RemoteAccessSession
+import technology.polygon.omswallet.models.RemoteCredentialMetadata
 import technology.polygon.omswallet.models.SendTransactionRequest
+import technology.polygon.omswallet.models.SmartSessionGrant
+import technology.polygon.omswallet.models.SmartSessionGrantUsage
+import technology.polygon.omswallet.models.SolanaBalance
+import technology.polygon.omswallet.models.SolanaBalancesResult
+import technology.polygon.omswallet.models.SolanaNetworkError
+import technology.polygon.omswallet.models.SolanaTokenProgram
+import technology.polygon.omswallet.models.SolanaVerificationSource
+import technology.polygon.omswallet.models.SolanaVerificationStatus
 import technology.polygon.omswallet.models.TokenBalance
 import technology.polygon.omswallet.models.ContractTokenBalance
 import technology.polygon.omswallet.models.TokenBalancesPage
@@ -43,6 +57,10 @@ import technology.polygon.omswallet.models.TransactionStatusPollingOptions
 import technology.polygon.omswallet.models.TransactionStatusResponse
 import technology.polygon.omswallet.models.TransactionTransfer
 import technology.polygon.omswallet.models.Wallet
+import technology.polygon.omswallet.models.WalletCredential
+import technology.polygon.omswallet.models.WalletImportCipherSuite
+import technology.polygon.omswallet.models.WalletImportPrivateKey
+import technology.polygon.omswallet.models.WalletImportRecipientKey
 import technology.polygon.omswallet.models.WalletType
 import technology.polygon.omswallet.wallet.CompleteAuthResult
 import technology.polygon.omswallet.wallet.CustomOidcProviderConfig
@@ -297,6 +315,70 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun importWallet(
+    clientId: String,
+    walletType: String,
+    privateKey: String?,
+    privateKeyBytesJson: String?,
+    reference: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      val type = walletType.toWalletType()
+      val key = when {
+        privateKey != null && privateKeyBytesJson == null -> when (type) {
+          WalletType.Ethereum -> WalletImportPrivateKey.Ethereum(privateKey)
+          WalletType.Solana -> WalletImportPrivateKey.Solana(privateKey)
+          else -> error("Unsupported wallet type: $walletType")
+        }
+        privateKey == null && privateKeyBytesJson != null -> {
+          val bytes = privateKeyBytesJson.toByteArrayParam("privateKey")
+          when (type) {
+            WalletType.Ethereum -> WalletImportPrivateKey.EthereumBytes(bytes)
+            WalletType.Solana -> WalletImportPrivateKey.SolanaBytes(bytes)
+            else -> error("Unsupported wallet type: $walletType")
+          }
+        }
+        else -> error("Exactly one private key representation is required")
+      }
+      walletActivationResultMap(requireClient(clientId).wallet.importWallet(key, reference))
+    }
+  }
+
+  override fun getWalletImportRecipientKey(clientId: String, cipherSuite: String, promise: Promise) {
+    launch(promise) {
+      walletImportRecipientKeyMap(
+        requireClient(clientId).wallet.getWalletImportRecipientKey(cipherSuite.toWalletImportCipherSuite())
+      )
+    }
+  }
+
+  override fun importEncryptedWallet(
+    clientId: String,
+    walletType: String,
+    keyId: String,
+    cipherSuite: String,
+    encapsulatedKey: String,
+    ciphertext: String,
+    reference: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      walletActivationResultMap(
+        requireClient(clientId).wallet.importEncryptedWallet(
+          walletType = walletType.toWalletType(),
+          keyMaterial = EncryptedWalletImportKeyMaterial(
+            keyId = keyId,
+            cipherSuite = cipherSuite.toWalletImportCipherSuite(),
+            encapsulatedKey = encapsulatedKey,
+            ciphertext = ciphertext
+          ),
+          reference = reference
+        )
+      )
+    }
+  }
+
   override fun selectWalletForPendingSelection(
     clientId: String,
     pendingSelectionId: String,
@@ -353,6 +435,10 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         message = message
       )
     }
+  }
+
+  override fun signSolanaMessage(clientId: String, message: String, promise: Promise) {
+    launch(promise) { requireClient(clientId).wallet.signSolanaMessage(message) }
   }
 
   override fun signTypedData(clientId: String, chainId: String, typedDataJson: String, promise: Promise) {
@@ -441,9 +527,46 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun sendSolanaTransfer(
+    clientId: String,
+    network: String,
+    asset: String,
+    to: String,
+    amount: String,
+    mode: String?,
+    feeOptionSelectorId: String?,
+    waitForStatus: Boolean,
+    statusPollingTimeoutMs: String?,
+    statusPollingIntervalMs: String?,
+    statusPollingFastIntervalMs: String?,
+    statusPollingFastPollCount: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      sendTransactionResponseMap(
+        requireClient(clientId).wallet.sendSolanaTransfer(
+          network = network.toSolanaNetwork(),
+          asset = asset,
+          to = to,
+          amount = BigInteger(amount),
+          mode = mode.toTransactionMode(),
+          selectFeeOption = feeOptionSelector(feeOptionSelectorId),
+          waitForStatus = waitForStatus,
+          statusPolling = statusPollingOptions(
+            timeoutMs = statusPollingTimeoutMs,
+            intervalMs = statusPollingIntervalMs,
+            fastIntervalMs = statusPollingFastIntervalMs,
+            fastPollCount = statusPollingFastPollCount
+          )
+        )
+      )
+    }
+  }
+
   override fun respondToFeeOptionSelection(
     requestId: String,
     selectionToken: String?,
+    selectionIndex: String?,
     errorMessage: String?,
     promise: Promise
   ) {
@@ -453,7 +576,11 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           ?: error("Unknown fee option selection request: $requestId")
 
       if (errorMessage == null) {
-        deferred.complete(selectionToken?.let(::FeeOptionSelection))
+        deferred.complete(
+          selectionToken?.let {
+            FeeOptionSelection(it, selectionIndex.toUIntOrNullParam("selectionIndex"))
+          }
+        )
       } else {
         deferred.completeExceptionally(IllegalStateException(errorMessage))
       }
@@ -521,6 +648,22 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun getSolanaBalances(clientId: String, paramsJson: String, promise: Promise) {
+    launch(promise) {
+      val params = paramsJson.toJsonObject("params")
+      solanaBalancesResultMap(
+        requireClient(clientId).indexer.getSolanaBalances(
+          walletAddress = params.requiredStringParam("walletAddress"),
+          networks = params.solanaNetworksParam(),
+          includeMetadata = params.booleanParam("includeMetadata") ?: true,
+          omitNativeBalances = params.booleanParam("omitNativeBalances"),
+          mintAddresses = params.stringListParam("mintAddresses"),
+          excludedMintAddresses = params.stringListParam("excludedMintAddresses")
+        )
+      )
+    }
+  }
+
   override fun verifyMessageSignature(
     clientId: String,
     chainId: String,
@@ -535,6 +678,17 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         message = message,
         signature = signature
       )
+    }
+  }
+
+  override fun verifySolanaMessageSignature(
+    clientId: String,
+    message: String,
+    signature: String,
+    promise: Promise
+  ) {
+    launch(promise) {
+      requireClient(clientId).wallet.isValidSolanaMessageSignature(message, signature)
     }
   }
 
@@ -564,30 +718,90 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun listAccess(clientId: String, pageSize: String?, promise: Promise) {
+  override fun inspectRemoteCredential(clientId: String, credentialId: String, promise: Promise) {
     launch(promise) {
-      Arguments.createArray().apply {
-        requireClient(clientId).wallet.listAccess(
-          pageSize = pageSize.toUIntOrNullParam("pageSize")
-        ).forEach { pushMap(credentialInfoMap(it)) }
-      }
+      remoteCredentialMetadataMap(requireClient(clientId).wallet.inspectRemoteCredential(credentialId))
     }
   }
 
-  override fun listAccessPage(clientId: String, pageSize: String?, cursor: String?, promise: Promise) {
+  override fun authorizeRemoteAccess(
+    clientId: String,
+    credentialId: String,
+    chainId: String,
+    grantsJson: String,
+    expiresAt: String,
+    sessionId: String?,
+    promise: Promise
+  ) {
     launch(promise) {
-      listAccessResponseMap(
-        requireClient(clientId).wallet.listAccessPage(
-          pageSize = pageSize.toUIntOrNullParam("pageSize"),
-          cursor = cursor
+      val activeClient = requireClient(clientId)
+      authorizedRemoteAccessMap(
+        activeClient.wallet.authorizeRemoteAccess(
+          credentialId = credentialId,
+          network = activeClient.requireNetwork(chainId),
+          grants = grantsJson.toSmartSessionGrants(),
+          expiresAt = expiresAt,
+          sessionId = sessionId
         )
       )
     }
   }
 
-  override fun revokeAccess(clientId: String, targetCredentialId: String, promise: Promise) {
+  override fun listAccess(clientId: String, pageSize: String?, type: String?, promise: Promise) {
     launch(promise) {
-      requireClient(clientId).wallet.revokeAccess(targetCredentialId)
+      Arguments.createArray().apply {
+        requireClient(clientId).wallet.listAccess(
+          pageSize = pageSize.toUIntOrNullParam("pageSize"),
+          type = type.toAccessGrantType()
+        ).forEach { pushMap(accessGrantMap(it)) }
+      }
+    }
+  }
+
+  override fun listAccessPage(
+    clientId: String,
+    pageSize: String?,
+    cursor: String?,
+    type: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      accessGrantPageMap(
+        requireClient(clientId).wallet.listAccessPage(
+          pageSize = pageSize.toUIntOrNullParam("pageSize"),
+          cursor = cursor,
+          type = type.toAccessGrantType()
+        )
+      )
+    }
+  }
+
+  override fun getRemoteAccessSession(clientId: String, sessionId: String, promise: Promise) {
+    launch(promise) {
+      remoteAccessSessionMap(requireClient(clientId).wallet.getRemoteAccessSession(sessionId))
+    }
+  }
+
+  override fun getRemoteAccessSessionUsage(
+    clientId: String,
+    sessionId: String,
+    chainId: String,
+    promise: Promise
+  ) {
+    launch(promise) {
+      val activeClient = requireClient(clientId)
+      Arguments.createArray().apply {
+        activeClient.wallet.getRemoteAccessSessionUsage(
+          sessionId,
+          activeClient.requireNetwork(chainId)
+        ).forEach { pushMap(smartSessionGrantUsageMap(it)) }
+      }
+    }
+  }
+
+  override fun revokeAccess(clientId: String, credentialId: String, sessionId: String?, promise: Promise) {
+    launch(promise) {
+      requireClient(clientId).wallet.revokeAccess(credentialId, sessionId)
       null
     }
   }
@@ -634,7 +848,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
               result.wallets.forEach { pushMap(walletMap(it)) }
             }
           )
-          putMap("credential", credentialInfoMap(result.credential))
+          putMap("credential", walletCredentialMap(result.credential))
         }
       }
 
@@ -650,7 +864,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
               result.pendingSelection.wallets.forEach { pushMap(walletMap(it)) }
             }
           )
-          putMap("credential", credentialInfoMap(result.pendingSelection.credential))
+          putMap("credential", walletCredentialMap(result.pendingSelection.credential))
           putMap("pendingSelection", pendingWalletSelectionMap(clientId, result.pendingSelection))
         }
     }
@@ -698,6 +912,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       putString("type", wallet.type.wireValue)
       putString("address", wallet.address)
       putNullableString("reference", wallet.reference)
+      putString("keyOrigin", wallet.keyOrigin.wireValue)
     }
 
   private fun pendingWalletSelectionMap(
@@ -715,7 +930,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           pendingSelection.wallets.forEach { pushMap(walletMap(it)) }
         }
       )
-      putMap("credential", credentialInfoMap(pendingSelection.credential))
+      putMap("credential", walletCredentialMap(pendingSelection.credential))
     }
   }
 
@@ -975,6 +1190,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private fun feeOptionSelectionMap(selection: FeeOptionSelection): WritableMap =
     Arguments.createMap().apply {
       putString("token", selection.token)
+      selection.index?.let { putDouble("index", it.toDouble()) } ?: putNull("index")
     }
 
   private fun feeOptionMap(option: FeeOption): WritableMap =
@@ -996,19 +1212,70 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       putNullableString("tokenId", token.tokenId)
     }
 
-  private fun credentialInfoMap(credential: CredentialInfo): WritableMap =
+  private fun walletCredentialMap(credential: WalletCredential): WritableMap =
     Arguments.createMap().apply {
       putString("credentialId", credential.credentialId)
       putString("expiresAt", credential.expiresAt)
       putBoolean("isCaller", credential.isCaller)
     }
 
-  private fun listAccessResponseMap(response: ListAccessResponse): WritableMap =
+  private fun smartSessionGrantMap(grant: SmartSessionGrant): WritableMap =
+    Arguments.createMap().apply {
+      when (grant) {
+        is SmartSessionGrant.NativeTransfer -> {
+          putString("kind", "nativeTransfer")
+          putNull("token")
+          putString("to", grant.to)
+          putString("limit", grant.limit.toString())
+          putNull("cumulative")
+        }
+        is SmartSessionGrant.Erc20Transfer -> {
+          putString("kind", "erc20Transfer")
+          putString("token", grant.token)
+          putNullableString("to", grant.to)
+          putString("limit", grant.limit.toString())
+          grant.cumulative?.let { putBoolean("cumulative", it) } ?: putNull("cumulative")
+        }
+      }
+    }
+
+  private fun remoteCredentialMetadataMap(metadata: RemoteCredentialMetadata): WritableMap =
+    Arguments.createMap().apply {
+      putString("appUrl", metadata.appUrl)
+      putString("appName", metadata.appName)
+      putString("appLogoUrl", metadata.appLogoUrl)
+      putMap("custom", Arguments.createMap().apply {
+        metadata.custom.forEach { (key, value) -> putString(key, value) }
+      })
+    }
+
+  private fun accessGrantMap(grant: AccessGrant): WritableMap =
+    Arguments.createMap().apply {
+      putMap("credential", walletCredentialMap(grant.credential))
+      when (grant) {
+        is AccessGrant.Direct -> {
+          putString("type", "direct")
+          putNull("sessionId")
+          putNull("metadata")
+          putArray("grants", Arguments.createArray())
+        }
+        is AccessGrant.Remote -> {
+          putString("type", "remote")
+          putString("sessionId", grant.sessionId)
+          putMap("metadata", remoteCredentialMetadataMap(grant.metadata))
+          putArray("grants", Arguments.createArray().apply {
+            grant.grants.forEach { pushMap(smartSessionGrantMap(it)) }
+          })
+        }
+      }
+    }
+
+  private fun accessGrantPageMap(response: AccessGrantPage): WritableMap =
     Arguments.createMap().apply {
       putArray(
-        "credentials",
+        "grants",
         Arguments.createArray().apply {
-          response.credentials.forEach { pushMap(credentialInfoMap(it)) }
+          response.grants.forEach { pushMap(accessGrantMap(it)) }
         }
       )
       val page = response.page
@@ -1017,6 +1284,84 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       } else {
         putMap("page", pageMap(page))
       }
+    }
+
+  private fun walletImportRecipientKeyMap(key: WalletImportRecipientKey): WritableMap =
+    Arguments.createMap().apply {
+      putString("keyId", key.keyId)
+      putString("cipherSuite", key.cipherSuite.wireValue)
+      putString("publicKey", key.publicKey)
+    }
+
+  private fun authorizedRemoteAccessMap(access: AuthorizedRemoteAccess): WritableMap =
+    Arguments.createMap().apply {
+      putString("walletId", access.walletId)
+      putString("sessionId", access.sessionId)
+      putString("expiresAt", access.expiresAt)
+    }
+
+  private fun remoteAccessSessionMap(session: RemoteAccessSession): WritableMap =
+    Arguments.createMap().apply {
+      putString("sessionId", session.sessionId)
+      putString("walletId", session.walletId)
+      putString("signerAddress", session.signerAddress)
+      putArray("grants", Arguments.createArray().apply {
+        session.grants.forEach { pushMap(smartSessionGrantMap(it)) }
+      })
+      putDouble("chainId", session.chainId.toDouble())
+      putString("expiresAt", session.expiresAt)
+    }
+
+  private fun smartSessionGrantUsageMap(usage: SmartSessionGrantUsage): WritableMap =
+    Arguments.createMap().apply {
+      putMap("grant", smartSessionGrantMap(usage.grant))
+      putNullableString("used", usage.used?.toString())
+    }
+
+  private fun solanaBalanceMap(balance: SolanaBalance): WritableMap =
+    Arguments.createMap().apply {
+      putString("network", balance.network.wireValue)
+      putString("accountAddress", balance.accountAddress)
+      putString("name", balance.name)
+      putString("symbol", balance.symbol)
+      putInt("decimals", balance.decimals)
+      putString("balance", balance.balance)
+      putString("formattedBalance", balance.formattedBalance)
+      putNullableString("imageUrl", balance.imageUrl)
+      putNullableString("metadataUri", balance.metadataUri)
+      putString("verificationStatus", balance.verificationStatus.bridgeValue)
+      putString("verificationSource", balance.verificationSource.bridgeValue)
+      putNullableString("priceUSD", balance.priceUSD)
+      putNullableString("balanceUSD", balance.balanceUSD)
+      when (balance) {
+        is SolanaBalance.Native -> {
+          putString("assetType", "native")
+          putNull("tokenProgram")
+          putNull("mintAddress")
+        }
+        is SolanaBalance.FungibleToken -> {
+          putString("assetType", "fungible-token")
+          putString("tokenProgram", balance.tokenProgram.bridgeValue)
+          putString("mintAddress", balance.mintAddress)
+        }
+      }
+    }
+
+  private fun solanaNetworkErrorMap(error: SolanaNetworkError): WritableMap =
+    Arguments.createMap().apply {
+      putString("network", error.network.wireValue)
+      putString("reason", error.reason)
+    }
+
+  private fun solanaBalancesResultMap(result: SolanaBalancesResult): WritableMap =
+    Arguments.createMap().apply {
+      putInt("status", result.status)
+      putArray("balances", Arguments.createArray().apply {
+        result.balances.forEach { pushMap(solanaBalanceMap(it)) }
+      })
+      putArray("errors", Arguments.createArray().apply {
+        result.errors.forEach { pushMap(solanaNetworkErrorMap(it)) }
+      })
     }
 
   private fun pageMap(page: Page): WritableMap =
@@ -1035,8 +1380,81 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private fun String?.toWalletType(): WalletType =
     when (this?.lowercase()) {
       null, "ethereum" -> WalletType.Ethereum
+      "solana" -> WalletType.Solana
       else -> error("Unsupported wallet type: $this")
     }
+
+  private fun String.toSolanaNetwork(): SolanaNetwork =
+    when (lowercase()) {
+      "solana:devnet" -> SolanaNetwork.Devnet
+      "solana:mainnet" -> SolanaNetwork.Mainnet
+      else -> error("Unsupported Solana network: $this")
+    }
+
+  private fun String?.toAccessGrantType(): AccessGrantType? =
+    when (this?.lowercase()) {
+      null -> null
+      "direct" -> AccessGrantType.Direct
+      "remote" -> AccessGrantType.Remote
+      else -> error("Unsupported access grant type: $this")
+    }
+
+  private fun String.toWalletImportCipherSuite(): WalletImportCipherSuite =
+    WalletImportCipherSuite.entries.firstOrNull { it.wireValue == this }
+      ?: error("Unsupported wallet import cipher suite: $this")
+
+  private val SolanaVerificationStatus.bridgeValue: String
+    get() = when (this) {
+      SolanaVerificationStatus.Verified -> "verified"
+      SolanaVerificationStatus.Unverified -> "unverified"
+      SolanaVerificationStatus.Unknown -> "unknown"
+    }
+
+  private val SolanaVerificationSource.bridgeValue: String
+    get() = when (this) {
+      SolanaVerificationSource.Jupiter -> "jupiter"
+      SolanaVerificationSource.SolflareUtl -> "solflare-utl"
+      SolanaVerificationSource.None -> "none"
+    }
+
+  private val SolanaTokenProgram.bridgeValue: String
+    get() = when (this) {
+      SolanaTokenProgram.SplToken -> "spl-token"
+      SolanaTokenProgram.Token2022 -> "token-2022"
+    }
+
+  private fun String.toByteArrayParam(name: String): ByteArray {
+    val values = (json.parseToJsonElement(this) as? JsonArray)
+      ?: error("$name must be a JSON byte array")
+    return values.mapIndexed { index, value ->
+      val number = value.jsonPrimitive.content.toIntOrNull()
+        ?: error("$name[$index] must be an integer")
+      require(number in 0..255) { "$name[$index] must be between 0 and 255" }
+      number.toByte()
+    }.toByteArray()
+  }
+
+  private fun String.toSmartSessionGrants(): List<SmartSessionGrant> {
+    val values = (json.parseToJsonElement(this) as? JsonArray)
+      ?: error("grants must be a JSON array")
+    return values.mapIndexed { index, element ->
+      val grant = element as? JsonObject ?: error("grants[$index] must be an object")
+      val limit = BigInteger(grant.requiredStringParam("limit"))
+      when (grant.requiredStringParam("kind")) {
+        "nativeTransfer" -> SmartSessionGrant.NativeTransfer(
+          to = grant.requiredStringParam("to"),
+          limit = limit
+        )
+        "erc20Transfer" -> SmartSessionGrant.Erc20Transfer(
+          token = grant.requiredStringParam("token"),
+          to = grant.stringParam("to"),
+          limit = limit,
+          cumulative = grant.booleanParam("cumulative")
+        )
+        else -> error("Unsupported smart-session grant kind")
+      }
+    }
+  }
 
   private fun String?.toWalletSelectionBehavior(): WalletSelectionBehavior =
     when (this?.lowercase()) {
@@ -1128,6 +1546,13 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
 
   private fun JsonObject.networksParam(client: OMSWallet): List<Network> =
     stringListParam("networks").map { client.requireNetwork(it) }
+
+  private fun JsonObject.solanaNetworksParam(): List<SolanaNetwork> =
+    if (containsKey("networks")) {
+      stringListParam("networks").map { it.toSolanaNetwork() }
+    } else {
+      listOf(SolanaNetwork.Mainnet, SolanaNetwork.Devnet)
+    }
 
   private fun JsonObject.indexerNetworkTypeParam(name: String): IndexerNetworkType? =
     stringParam(name)?.let { value ->

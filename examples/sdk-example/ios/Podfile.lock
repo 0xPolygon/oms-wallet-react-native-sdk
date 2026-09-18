@@ -3,10 +3,10 @@ PODS:
   - hermes-engine (250829098.0.10):
     - hermes-engine/Pre-built (= 250829098.0.10)
   - hermes-engine/Pre-built (250829098.0.10)
-  - oms-wallet-swift-sdk (0.2.0)
+  - oms-wallet-swift-sdk (0.3.0)
   - OmsWalletReactNativeSdk (0.2.0):
     - hermes-engine
-    - oms-wallet-swift-sdk (= 0.2.0)
+    - oms-wallet-swift-sdk (= 0.3.0)
     - RCTRequired
     - RCTTypeSafety
     - React-Core
@@ -2056,8 +2056,8 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   FBLazyVector: 24e62c765683b8d89006a88a2c8f5cf019f0074d
   hermes-engine: 050bf0e0b60ac8f6b274d047bab7d63320f019cc
-  oms-wallet-swift-sdk: 67bf35f19589899c94cb487e1112beb425bd22b6
-  OmsWalletReactNativeSdk: 7d986aaf155cad45cf3d78c69c964db5edaa3099
+  oms-wallet-swift-sdk: c098269a2ce1dbb5f82255c278d37c86155d0d19
+  OmsWalletReactNativeSdk: c5c8ffb9271b742a0c206d920929f30d93f42d9b
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
   RCTRequired: 9f3a7e5645d4bc3f551593de7550bb66ab6e42bc
   RCTSwiftUI: 239ed2eb9e73de5a6f518810630f0c95e01c8702

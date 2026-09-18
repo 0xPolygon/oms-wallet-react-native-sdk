@@ -33,6 +33,7 @@
   },
   "files": [
     "API.md",
+    "MIGRATION.md",
     "src",
     "lib",
     "android",

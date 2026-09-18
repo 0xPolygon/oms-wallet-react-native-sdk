@@ -10,9 +10,16 @@ import type {
   ContractTokenBalance,
   TokenBalance,
   Transaction,
+  AccessGrant,
+  ImportWalletParams,
+  SolanaBalance,
   WalletAccount,
 } from '../src/types';
-import type { OMSWalletError, OMSWalletUpstreamError } from '../src/errors';
+import type {
+  OMSWalletError,
+  OMSWalletErrorCode,
+  OMSWalletUpstreamError,
+} from '../src/errors';
 
 type Assert<T extends true> = T;
 type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
@@ -43,6 +50,30 @@ export type RequiredTransactionFieldsRemainRequired = Assert<
   IsOptional<Transaction, 'txnHash'> extends false ? true : false
 >;
 
+export type WalletKeyOriginRemainsRequired = Assert<
+  IsOptional<WalletAccount, 'keyOrigin'> extends false ? true : false
+>;
+
+export function narrowAccessGrant(grant: AccessGrant): string {
+  if (grant.type === 'remote') {
+    return grant.sessionId;
+  }
+  return grant.credentialId;
+}
+
+export function narrowSolanaBalance(balance: SolanaBalance): string {
+  if (balance.assetType === 'fungible-token') {
+    return balance.mintAddress;
+  }
+  const mintAddress: undefined = balance.mintAddress;
+  return mintAddress ?? balance.accountAddress;
+}
+
+export const byteWalletImport: ImportWalletParams = {
+  type: 'solana',
+  privateKey: new Uint8Array(32),
+};
+
 export function narrowTokenBalance(
   tokenBalance: TokenBalance
 ): string | undefined {
@@ -60,4 +91,10 @@ export function narrowTokenBalance(
 export type PublicErrorsExcludeNull = Assert<
   ExcludesNull<OMSWalletError['operation']> &
     ExcludesNull<OMSWalletUpstreamError['message']>
+>;
+
+export type AttestationErrorCodeIsPublic = Assert<
+  'OMS_ATTESTATION_VERIFICATION_FAILED' extends OMSWalletErrorCode
+    ? true
+    : false
 >;
