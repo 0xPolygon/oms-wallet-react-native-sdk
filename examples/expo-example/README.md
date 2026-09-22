@@ -38,3 +38,7 @@ npm start
 
 Native configuration is set through `app.json`. The generated `ios/` and
 `android/` folders are intentionally ignored.
+
+The `expo-build-properties` plugin enables UIKit scene support so the generated
+iOS project can run when built with Xcode 27. Native projects remain generated
+by Expo and should not be edited manually.
