@@ -27,12 +27,18 @@ const swiftVersion = requireVersion(
   'Swift SDK'
 );
 
-if (kotlinVersion !== swiftVersion) {
-  throw new Error(
-    `Native SDK dependency versions diverge: Kotlin ${kotlinVersion}, Swift ${swiftVersion}`
-  );
+const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+for (const [label, version] of [
+  ['Kotlin SDK', kotlinVersion],
+  ['Swift SDK', swiftVersion],
+]) {
+  if (!exactVersion.test(version)) {
+    throw new Error(
+      `${label} dependency must use an exact version; found ${version}`
+    );
+  }
 }
 
 process.stdout.write(
-  `Native SDK dependency versions match (${kotlinVersion}).\n`
+  `Native SDK dependencies use exact versions (Kotlin ${kotlinVersion}, Swift ${swiftVersion}).\n`
 );
