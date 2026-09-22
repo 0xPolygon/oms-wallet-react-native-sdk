@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+### Patch Changes
+
+- [#113](https://github.com/0xPolygon/oms-wallet-react-native-sdk/pull/113) [`47bdb55`](https://github.com/0xPolygon/oms-wallet-react-native-sdk/commit/47bdb55a0614985a97e171eb910f141cbef4579e) Thanks [@tolgahan-arikan](https://github.com/tolgahan-arikan)! - Use Kotlin SDK 0.3.1 so Android consumers, including Expo apps, compile with the supported Kotlin toolchain.
+
 ## 0.3.0
 
 ### Minor Changes
