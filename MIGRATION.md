@@ -4,7 +4,7 @@ Version 0.3.0 aligns the React Native package with version 0.3.0 of the Swift an
 
 ## Native build requirements
 
-The package pins both native SDKs to `0.3.0`. Android projects must use Kotlin `2.4.10` or newer because the Kotlin SDK 0.3.0 artifact is compiled with Kotlin 2.4 metadata. The existing platform minimums remain Android API 24 and iOS 15.
+Version 0.3.0 pinned both native SDKs to `0.3.0`. Android projects using that release require Kotlin `2.4.10` or newer because the Kotlin SDK 0.3.0 artifact is compiled with Kotlin 2.4 metadata. The platform minimums for that release were Android API 24 and iOS 15.
 
 ## Wallet models
 
