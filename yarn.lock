@@ -11267,9 +11267,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ox@npm:0.14.20":
-  version: 0.14.20
-  resolution: "ox@npm:0.14.20"
+"ox@npm:0.14.45":
+  version: 0.14.45
+  resolution: "ox@npm:0.14.45"
   dependencies:
     "@adraffy/ens-normalize": "npm:^1.11.0"
     "@noble/ciphers": "npm:^1.3.0"
@@ -11284,7 +11284,7 @@ __metadata:
   peerDependenciesMeta:
     typescript:
       optional: true
-  checksum: 10c0/fe1c34577536aea3bda5ec47e083be9069d99cb35a270527921f1c7b406283f12bc4b7e9348b46aa3ba88555fc8abc963129c6b5b8b3b375d5e1549f65f2ce9a
+  checksum: 10c0/d1d23e3b85a14d94ec0d608626c08e3dc1852fd90d22486827f1fbe300005958e004ac0db14a8168b2147001c493ff2eb344368513ee8fc82489e45b9115577a
   languageName: node
   linkType: hard
 
@@ -13515,8 +13515,8 @@ __metadata:
   linkType: hard
 
 "viem@npm:>=2.37.9, viem@npm:^2.1.1, viem@npm:^2.31.7, viem@npm:^2.41.0, viem@npm:^2.47.0":
-  version: 2.49.0
-  resolution: "viem@npm:2.49.0"
+  version: 2.56.8
+  resolution: "viem@npm:2.56.8"
   dependencies:
     "@noble/curves": "npm:1.9.1"
     "@noble/hashes": "npm:1.8.0"
@@ -13524,14 +13524,14 @@ __metadata:
     "@scure/bip39": "npm:1.6.0"
     abitype: "npm:1.2.3"
     isows: "npm:1.0.7"
-    ox: "npm:0.14.20"
-    ws: "npm:8.18.3"
+    ox: "npm:0.14.45"
+    ws: "npm:8.21.0"
   peerDependencies:
     typescript: ">=5.0.4"
   peerDependenciesMeta:
     typescript:
       optional: true
-  checksum: 10c0/06b35c498b5ab6c1232f7c733c9f929a3a91ca487e97168ed887a2d4118bf052a60f5924276f76bc31496f542bd1b6fe74ffe317ff4446d52116459f5cfaacab
+  checksum: 10c0/7ac525363f6032b32b7a2f2e18f922b8cf8e32fe1c12e855e7f995fdfbda978c7b4a7689a51d63a8d26fafd89804a2bab154943e9ffbee28496aee4b714e2b40
   languageName: node
   linkType: hard
 
@@ -13731,9 +13731,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ws@npm:8.18.3":
-  version: 8.18.3
-  resolution: "ws@npm:8.18.3"
+"ws@npm:8.21.0":
+  version: 8.21.0
+  resolution: "ws@npm:8.21.0"
   peerDependencies:
     bufferutil: ^4.0.1
     utf-8-validate: ">=5.0.2"
@@ -13742,7 +13742,7 @@ __metadata:
       optional: true
     utf-8-validate:
       optional: true
-  checksum: 10c0/eac918213de265ef7cb3d4ca348b891a51a520d839aa51cdb8ca93d4fa7ff9f6ccb339ccee89e4075324097f0a55157c89fa3f7147bde9d8d7e90335dc087b53
+  checksum: 10c0/ef4a243476283fc49bc7550966c4af4aa0eef56273837211e700de3b664e08604a760cdddcb5ba43c049140e74ccfec5b0ee0bb439e08c2adf9138902fdde5f9
   languageName: node
   linkType: hard
 
