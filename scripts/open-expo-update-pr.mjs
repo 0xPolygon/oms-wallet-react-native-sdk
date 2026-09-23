@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { createExpoUpdateCommit } from './create-expo-update-commit.mjs';
 
 const packageName = '@polygonlabs/oms-wallet-react-native';
 const token = requireEnv('GITHUB_TOKEN');
@@ -47,33 +48,26 @@ if (existingPulls.length > 0) {
   process.exit(0);
 }
 
+const commit = await createExpoUpdateCommit({
+  github,
+  repository,
+  baseCommit,
+  version,
+  packageJson: await readFile(
+    new URL('../examples/expo-example/package.json', import.meta.url)
+  ),
+  packageLock: await readFile(
+    new URL('../examples/expo-example/package-lock.json', import.meta.url)
+  ),
+});
+
 await github(`/repos/${repository}/git/refs`, {
   method: 'POST',
   body: {
     ref: `refs/heads/${branch}`,
-    sha: baseCommit,
+    sha: commit.sha,
   },
 });
-
-const paths = [
-  'examples/expo-example/package.json',
-  'examples/expo-example/package-lock.json',
-];
-for (const path of paths) {
-  const existing = await github(
-    `/repos/${repository}/contents/${path}?ref=${encodeURIComponent(baseCommit)}`
-  );
-  const contents = await readFile(new URL(`../${path}`, import.meta.url));
-  await github(`/repos/${repository}/contents/${path}`, {
-    method: 'PUT',
-    body: {
-      message: `chore(expo-example): use SDK v${version}`,
-      content: contents.toString('base64'),
-      branch,
-      sha: existing.sha,
-    },
-  });
-}
 
 const pullRequest = await github(`/repos/${repository}/pulls`, {
   method: 'POST',
