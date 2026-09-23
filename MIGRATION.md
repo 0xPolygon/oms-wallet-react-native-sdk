@@ -1,10 +1,6 @@
-# Migrating from 0.2.0 to 0.3.0
+# Migrating from 0.2.0 to 0.3.1
 
-Version 0.3.0 aligns the React Native package with version 0.3.0 of the Swift and Kotlin SDKs. It adds wallet import, Solana wallets and balances, remote smart-session access, and indexed fee-option selection.
-
-## Native build requirements
-
-The package pins both native SDKs to `0.3.0`. Android projects must use Kotlin `2.4.10` or newer because the Kotlin SDK 0.3.0 artifact is compiled with Kotlin 2.4 metadata. The existing platform minimums remain Android API 24 and iOS 15.
+Compared with 0.2.0, version 0.3.1 adds wallet import, Solana wallets and balances, remote smart-session access, and indexed fee-option selection.
 
 ## Wallet models
 
@@ -59,7 +55,7 @@ Sponsored transactions call the selector with an empty array. Return `undefined`
 
 ## New APIs
 
-The 0.3.0 release adds:
+Version 0.3.1 includes:
 
 - `importWallet`, `getWalletImportRecipientKey`, and `importEncryptedWallet`
 - Solana wallet creation/import, message signing and verification, and `sendSolanaTransfer`

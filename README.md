@@ -7,7 +7,7 @@ OMS Wallet SDK for bare React Native apps and Expo development builds on iOS and
 ## Requirements
 
 - React Native 0.85 or newer with React 19.2 or newer
-- Android `minSdk 24`, `compileSdk 36`, Java 17, Kotlin 2.4.10, and Android 10 / API 29 or newer at runtime
+- Android `minSdk 24`, `compileSdk 36`, Java 17, Kotlin 2.1.20 (SDK default), and Android 10 / API 29 or newer at runtime
 - iOS 15 or newer with Xcode 26
 
 The package contains native code. Expo Go and React Native Web are not supported.
@@ -28,7 +28,7 @@ npx pod-install
 
 ## Expo
 
-Install the package in an Expo SDK 56 app:
+Install the package in an Expo SDK 57 app:
 
 ```sh
 npx expo install @polygonlabs/oms-wallet-react-native
@@ -43,6 +43,8 @@ npx expo run:ios
 ```
 
 No SDK config plugin is required. Add your redirect scheme to the app's Expo configuration when using redirect authentication.
+
+Expo SDK 57 requires iOS 16.4 or newer and Xcode 26.4 or newer.
 
 ## Create The Client
 
@@ -183,7 +185,7 @@ const solanaBalances = await omsWallet.indexer.getSolanaBalances({
 
 - [React Native SDK guide](https://docs.polygon.technology/wallets/sdk/react-native/quickstart)
 - [Public TypeScript API](./API.md)
-- [Migrate from 0.2.0 to 0.3.0](./MIGRATION.md)
+- [Migrate from 0.2.0 to 0.3.1](./MIGRATION.md)
 
 ## Examples
 
