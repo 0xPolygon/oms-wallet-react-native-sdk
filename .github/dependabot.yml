@@ -20,6 +20,30 @@ updates:
     labels:
       - dependencies
 
+  # Supported-minimum Expo fixture. Only patch updates for the pinned stack;
+  # raising the minimum is a deliberate pull request.
+  - package-ecosystem: npm
+    directory: /compatibility-tests/expo-min
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+    ignore:
+      - dependency-name: expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+
   # GitHub Actions
   - package-ecosystem: github-actions
     directory: /

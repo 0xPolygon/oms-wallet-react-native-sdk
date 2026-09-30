@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "OMS Expo Min",
+    "slug": "oms-expo-min",
+    "version": "1.0.0",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.sequence.oms.expomin"
+    },
+    "android": {
+      "package": "com.sequence.oms.expomin"
+    }
+  }
+}
