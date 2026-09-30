@@ -19,8 +19,8 @@ within 7 business days.
 
 | Version | Supported |
 |---|---|
-| 0.1.x-alpha | ✅ Active development |
-| Earlier | ❌ Not supported |
+| 0.3.x | ✅ Supported |
+| Earlier than 0.3.0 | ❌ Not supported |
 
 ## Scope
 

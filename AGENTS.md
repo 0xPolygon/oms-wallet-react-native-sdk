@@ -112,7 +112,7 @@ yarn expo-example
 ## Testing
 
 See **[TESTING.md](./TESTING.md)** for testing conventions, manual verification checklist, and the
-plan for when automated tests are added.
+automated unit tests in `test/`.
 
 ## Documentation
 
@@ -134,7 +134,8 @@ plan for when automated tests are added.
 - Publishing is CI-only through Changesets and npm OIDC staged publishing. An npm maintainer must
   approve each stage with 2FA. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
-  pins normally remain equal, but do not manufacture native releases to match npm-only changes.
+  pins are independent (currently Kotlin 0.3.1, Swift 0.3.0); `yarn check:native-versions` only
+  requires each to be an exact version. Do not manufacture native releases to match npm-only changes.
 - Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
   blocks third-party lifecycle scripts and Git-hosted dependencies unless explicitly approved.
 
@@ -151,6 +152,8 @@ plan for when automated tests are added.
 - **GitHub CodeQL default setup** — GitHub-managed Actions, JavaScript/TypeScript, and Ruby
   analysis. Kotlin and Swift CodeQL are intentionally omitted to avoid duplicating the required
   native builds on every pull request.
+- **`claude-code-review-trigger.yml`** and **`claude-trigger.yml`** trigger the Claude review and
+  assistant workflows.
 - **`dependency-review.yml`** — blocks newly introduced vulnerable dependencies.
 
 Pull requests run full CI, including native builds. If the native layer changed, make sure the
@@ -163,8 +166,8 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
   from the root.
 - `yarn prepare` regenerates `lib/` — if builds look stale, run `yarn clean && yarn prepare`.
 - The podspec resolves `oms-wallet-swift-sdk` and the Android module resolves
-  `io.github.0xsequence:oms-wallet-kotlin-sdk` — bump native SDK versions in the podspec and
-  `android/build.gradle` together.
+  `io.github.0xsequence:oms-wallet-kotlin-sdk`. Native SDK pins live in the podspec (Swift)
+  and `android/build.gradle` (Kotlin); update whichever dependency is actually changing.
 - Turbo cache can mask failures: if something seems wrong, run with `--force` to skip the cache.
 - Signed commits are required (enforced by branch protection) — configure `git commit -S` locally.
 

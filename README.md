@@ -58,6 +58,8 @@ const omsWallet = new OMSWallet({
 });
 ```
 
+Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Keep the instance in a module-level singleton so Fast Refresh and test setup do not create a second one and invalidate the first.
+
 ## Authenticate With Email
 
 ```ts

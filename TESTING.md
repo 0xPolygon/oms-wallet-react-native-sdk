@@ -27,7 +27,7 @@ npm --prefix examples/expo-example run typecheck
 # Build the library
 yarn prepare
 
-# Package exports, native version parity, and npm contents
+# Package exports, native SDK version format, and npm contents
 yarn check:exports
 yarn check:native-versions
 yarn check:package
@@ -79,5 +79,5 @@ Android and iOS CI checks pass before merging; validate locally when you need fa
 | Run unit tests                | `yarn test`                                  |
 | SDK verification              | `yarn verify`                                |
 | Validate package exports      | `yarn check:exports`                         |
-| Validate native SDK parity    | `yarn check:native-versions`                 |
+| Validate native SDK versions  | `yarn check:native-versions`                 |
 | Validate npm package contents | `yarn check:package`                         |
