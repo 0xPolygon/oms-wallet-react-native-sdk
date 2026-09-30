@@ -6,7 +6,10 @@ const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 );
-const exampleDir = path.join(rootDir, 'examples', 'expo-example');
+const exampleDir = path.resolve(
+  rootDir,
+  process.argv[2] ?? path.join('examples', 'expo-example')
+);
 const executable = path.join(
   exampleDir,
   'node_modules',
