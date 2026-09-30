@@ -58,7 +58,7 @@ const omsWallet = new OMSWallet({
 });
 ```
 
-Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Keep the instance in a module-level singleton so Fast Refresh and test setup do not create a second one and invalidate the first.
+Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Create the instance once in its own module, as above, and import it where needed. Fast Refresh re-runs a module that exports non-component values when you edit it, so editing that module creates a new instance; reload the app after changing it.
 
 ## Authenticate With Email
 
