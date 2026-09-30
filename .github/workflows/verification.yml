@@ -44,6 +44,110 @@ jobs:
       - name: Prebuild and verify native autolinking
         run: yarn expo-example:prebuild && yarn expo-example:verify-autolinking
 
+  expo-native:
+    name: Expo ${{ matrix.expo }} ${{ matrix.platform }} build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        expo: [min, current]
+        platform: [android, ios]
+        include:
+          - expo: min
+            app: compatibility-tests/expo-min
+            scripts: expo-min
+          - expo: current
+            app: examples/expo-example
+            scripts: expo-example
+          - platform: android
+            runner: ubuntu-latest
+          - platform: ios
+            runner: macos-latest
+    env:
+      ANDROID_NDK_VERSION: 27.1.12297006
+      XCODE_VERSION: 26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Install JDK
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        run: |
+          /bin/bash -c "yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null"
+          for attempt in 1 2 3; do
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION"; then
+              exit 0
+            fi
+            rm -rf "$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" "$ANDROID_HOME/.temp"
+            sleep 10
+          done
+          exit 1
+      - name: Cache Gradle
+        if: matrix.platform == 'android'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-expo-${{ matrix.expo }}-${{ hashFiles(format('{0}/package-lock.json', matrix.app)) }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-expo-${{ matrix.expo }}-
+      - name: Select Xcode
+        if: matrix.platform == 'ios'
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+      - name: Setup Ruby
+        if: matrix.platform == 'ios'
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: 3.4.9
+      - name: Install locally packed SDK
+        run: yarn ${{ matrix.scripts }}:install
+      - name: Verify native autolinking
+        run: yarn ${{ matrix.scripts }}:verify-autolinking
+      - name: Prebuild native project
+        run: yarn ${{ matrix.scripts }}:prebuild --platform ${{ matrix.platform }}
+      - name: Build Android app
+        if: matrix.platform == 'android'
+        working-directory: ${{ matrix.app }}/android
+        env:
+          JAVA_OPTS: -XX:MaxHeapSize=6g
+        run: ./gradlew app:assembleDebug --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a
+      - name: Install CocoaPods dependencies
+        if: matrix.platform == 'ios'
+        working-directory: ${{ matrix.app }}/ios
+        env:
+          # Reuse the bare example's pinned CocoaPods; CocoaPods needs a UTF-8 locale.
+          BUNDLE_GEMFILE: ${{ github.workspace }}/examples/sdk-example/Gemfile
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: |
+          bundle install
+          bundle exec pod repo update --verbose
+          bundle exec pod install
+      - name: Build iOS app
+        if: matrix.platform == 'ios'
+        working-directory: ${{ matrix.app }}/ios
+        run: |
+          workspace=$(find . -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          if [[ -z "$workspace" ]]; then
+            echo "No Xcode workspace generated in ${{ matrix.app }}/ios" >&2
+            exit 1
+          fi
+          scheme=$(basename "$workspace" .xcworkspace)
+          xcodebuild -workspace "$workspace" -scheme "$scheme" \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
+
   android:
     name: Android bare RN build
     runs-on: ubuntu-latest
