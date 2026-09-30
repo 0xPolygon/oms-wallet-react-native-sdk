@@ -2,10 +2,6 @@
 
 Compared with 0.2.0, version 0.3.1 adds wallet import, Solana wallets and balances, remote smart-session access, and indexed fee-option selection.
 
-## Version 0.3.1
-
-Version 0.3.1 is a patch release on top of 0.3.0. It uses Kotlin SDK 0.3.1 so Android consumers, including Expo apps, compile with the supported Kotlin toolchain. No API changes are required when moving from 0.3.0.
-
 ## Wallet models
 
 `WalletAccount` now requires `keyOrigin`, whose value is either `enclave` or `imported`. This field is returned by the SDK; callers do not construct it when creating or importing a wallet.
