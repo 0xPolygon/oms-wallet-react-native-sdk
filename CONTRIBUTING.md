@@ -35,6 +35,7 @@ without reviewing the dependency and documenting why the exception is safe.
 | `examples/sdk-example/` | React Native CLI example (Yarn workspace) |
 | `examples/trails-actions-example/` | Trails demo (Yarn workspace) |
 | `examples/expo-example/` | Expo example — **not** a Yarn workspace; install with `yarn expo-example:install` from the repo root |
+| `compatibility-tests/` | Build-only fixtures; `expo-min/` pins the oldest supported Expo SDK — **not** a Yarn workspace; install with `yarn expo-min:install` |
 
 ## Development workflow
 

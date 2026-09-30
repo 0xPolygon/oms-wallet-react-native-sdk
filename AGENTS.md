@@ -71,6 +71,8 @@ and Expo apps.
 - `examples/sdk-example/` — React Native CLI example app
 - `examples/trails-actions-example/` — Trails demo with redirect auth
 - `examples/expo-example/` — standalone Expo example (not in Yarn workspace; uses `npm`)
+- `compatibility-tests/expo-min/` — build-only fixture pinned to the oldest supported Expo SDK (not
+  in Yarn workspace; uses `npm`)
 - `.changeset/` — release intent and single-root-package Changesets configuration
 - `.github/workflows/` — CI, Changeset enforcement, release, and dependency review
 
@@ -142,7 +144,8 @@ automated unit tests in `test/`.
 ## CI/CD
 
 - **`ci.yml`** — invokes the complete reusable verification workflow on pull requests.
-- **`verification.yml`** — Yarn verification, package/API gates, Expo autolinking, Android, and iOS.
+- **`verification.yml`** — Yarn verification, package/API gates, Expo autolinking, native Expo
+  builds (minimum and current Expo SDK on Android and iOS), and bare Android and iOS builds.
 - **`changeset-check.yml`** — requires a user-facing or empty Changeset on pull requests.
 - **`quick-checks.yml`** — fast verification on pushes to non-master branches.
 - **`release.yml`** — verifies `master`, opens release pull requests, and stages release candidates
@@ -158,6 +161,20 @@ automated unit tests in `test/`.
 
 Pull requests run full CI, including native builds. If the native layer changed, make sure the
 Android and iOS PR checks pass before merging; validate locally when you need faster feedback.
+
+## Supported Versions
+
+- The supported minimum (Expo SDK, React Native, React) is defined by the exact pins in
+  `compatibility-tests/expo-min`. CI builds that fixture and `examples/expo-example` (the current
+  Expo SDK) natively on Android and iOS.
+- The fixture is never auto-bumped: Dependabot only proposes patch updates for `expo`, `react`, and
+  `react-native` there. Raising the minimum is its own deliberate pull request that updates
+  everything in the "Supported minimum" Maintenance Matrix row.
+- `examples/expo-example` tracks the latest Expo SDK through Dependabot and the post-publish Expo
+  update workflow.
+- Do not add pull request gates that require dependencies to be the latest version.
+- `yarn check:supported-versions` (part of `yarn verify`) fails when the fixture pins, peer ranges,
+  README, or Dependabot rule disagree.
 
 ## Common Pitfalls
 
@@ -182,3 +199,4 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
 | Publish/release behavior                  | `PUBLISHING.md`, `.changeset/config.json`, release workflows |
 | Repo structure (new top-level dirs)       | `AGENTS.md` structure section                             |
 | Contributing workflow                     | `CONTRIBUTING.md`, `README.md`                            |
+| Supported minimum (Expo / React Native / React) | `compatibility-tests/expo-min` pins, prebuild template, and `package-lock.json`; `package.json#peerDependencies`; `README.md`; Dependabot ignore rule; new-polygon-docs `wallets/sdk/react-native/quickstart.md`; `0xsequence/kotlin-sdk` Expo compatibility fixture (`compatibility-tests`). Checked by `yarn check:supported-versions`. |
