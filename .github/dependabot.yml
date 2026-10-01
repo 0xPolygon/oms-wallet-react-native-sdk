@@ -43,6 +43,8 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+      # CI installs the SDK from the packed PR tarball, so this pin is never what gets built.
+      - dependency-name: '@polygonlabs/oms-wallet-react-native'
 
   # GitHub Actions
   - package-ecosystem: github-actions
