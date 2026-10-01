@@ -51,7 +51,7 @@ function consistentInputs() {
       peerDependencies: { 'react': '>=19.2.0', 'react-native': '>=0.85.0' },
     },
     readme:
-      '- React Native 0.85 or newer\n\nInstall in an app on Expo SDK 56 or newer.\n',
+      '- React Native 0.85 or newer with React 19.2 or newer\n\nInstall in an app on Expo SDK 56 or newer.\n',
     dependabot,
   };
 }
@@ -97,5 +97,28 @@ test('rejects a prebuild template from another Expo SDK', async () => {
     'expo prebuild --template expo-template-bare-minimum@57.0.26';
   const problems = findVersionProblems(inputs);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /expo-template-bare-minimum@56\.x/);
+  assert.match(problems[0], /expo-template-bare-minimum@56\.<minor>\.<patch>/);
+});
+
+test('rejects a prebuild template that is not an exact version', async () => {
+  const { findVersionProblems } = await supportedVersionsModule;
+  for (const template of ['56', '56.0', '56.x', '^56.0.37', '56.0.37-beta.1']) {
+    const inputs = consistentInputs();
+    inputs.fixturePackage.scripts.prebuild = `expo prebuild --template expo-template-bare-minimum@${template}`;
+    const problems = findVersionProblems(inputs);
+    assert.equal(problems.length, 1, template);
+    assert.match(problems[0], /exact expo-template-bare-minimum@56/, template);
+  }
+});
+
+test('rejects a README React minimum that does not match the fixture', async () => {
+  const { findVersionProblems } = await supportedVersionsModule;
+  const inputs = consistentInputs();
+  inputs.readme = inputs.readme.replace(
+    'React 19.2 or newer',
+    'React 18.0 or newer'
+  );
+  assert.deepEqual(findVersionProblems(inputs), [
+    'README.md must state "React 19.2 or newer" (found 18.0).',
+  ]);
 });

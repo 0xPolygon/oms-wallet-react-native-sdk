@@ -75,12 +75,12 @@ export function findVersionProblems({
 
   // Some Expo 56 patch releases bundle the SDK 57 prebuild template, so the
   // fixture passes an explicit template that must match its Expo SDK.
-  const template = /expo-template-bare-minimum@(\d+)\./.exec(
+  const template = /expo-template-bare-minimum@(\d+)\.\d+\.\d+(?![\w.-])/.exec(
     fixturePackage.scripts?.prebuild ?? ''
   );
   if (template?.[1] !== versions.expo.major) {
     problems.push(
-      `${fixtureDirectory}/package.json scripts.prebuild must use an exact expo-template-bare-minimum@${versions.expo.major}.x template.`
+      `${fixtureDirectory}/package.json scripts.prebuild must pin an exact expo-template-bare-minimum@${versions.expo.major}.<minor>.<patch> template.`
     );
   }
 
@@ -101,6 +101,7 @@ export function findVersionProblems({
       /React Native (\d+\.\d+) or newer/g,
       versions['react-native'].minor,
     ],
+    ['React', /\bReact (\d+\.\d+) or newer/g, versions.react.minor],
   ]) {
     const found = [...readme.matchAll(pattern)].map((match) => match[1]);
     if (found.length === 0 || found.some((version) => version !== expected)) {

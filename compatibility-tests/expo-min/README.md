@@ -5,12 +5,16 @@ pull request, installs the tarball here, runs `expo prebuild`, and compiles the
 Android and iOS apps.
 
 `expo`, `react`, and `react-native` are pinned to exact versions that match
-what this Expo SDK expects. Dependabot only proposes patch updates for them.
-The `prebuild` script pins an `expo-template-bare-minimum` release from the
-same Expo SDK because some Expo 56 patch releases bundle the SDK 57 template.
-Change these pins only in a deliberate pull request that raises the supported
-minimum, and update everything listed in the `AGENTS.md` Maintenance Matrix in
-the same pull request. `yarn check:supported-versions` fails if they drift.
+what this Expo SDK expects. The `prebuild` script pins an exact
+`expo-template-bare-minimum` release from the same Expo SDK because some
+Expo 56 patch releases bundle the SDK 57 template.
+
+Patch updates within the current version lines (Expo SDK 56, React Native
+0.85, React 19.2) are fine; Dependabot proposes only those. Changing a version
+line raises the supported minimum: do that in a deliberate pull request that
+updates everything listed in the `AGENTS.md` Maintenance Matrix.
+`yarn check:supported-versions` fails if the pins, peer ranges, README, and
+Dependabot rules disagree.
 
 This directory is not a Yarn workspace member. Install and prebuild it from
 the repo root:
