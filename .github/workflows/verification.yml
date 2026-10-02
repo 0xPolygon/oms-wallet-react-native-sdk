@@ -106,7 +106,7 @@ jobs:
           xcode-version: ${{ env.XCODE_VERSION }}
       - name: Setup Ruby
         if: matrix.platform == 'ios'
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
         with:
           ruby-version: 3.4.9
       - name: Install locally packed SDK
@@ -238,7 +238,7 @@ jobs:
           xcode-version: ${{ env.XCODE_VERSION }}
       - name: Setup Ruby
         if: env.turbo_cache_hit != '1'
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
         with:
           ruby-version: 3.4.9
       - name: Install CocoaPods dependencies
