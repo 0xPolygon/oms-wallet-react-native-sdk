@@ -71,6 +71,8 @@ and Expo apps.
 - `examples/sdk-example/` — React Native CLI example app
 - `examples/trails-actions-example/` — Trails demo with redirect auth
 - `examples/expo-example/` — standalone Expo example (not in Yarn workspace; uses `npm`)
+- `compatibility-tests/expo-min/` — build-only fixture pinned to the oldest supported Expo SDK (not
+  in Yarn workspace; uses `npm`)
 - `.changeset/` — release intent and single-root-package Changesets configuration
 - `.github/workflows/` — CI, Changeset enforcement, release, and dependency review
 
@@ -112,7 +114,7 @@ yarn expo-example
 ## Testing
 
 See **[TESTING.md](./TESTING.md)** for testing conventions, manual verification checklist, and the
-plan for when automated tests are added.
+automated unit tests in `test/`.
 
 ## Documentation
 
@@ -134,14 +136,16 @@ plan for when automated tests are added.
 - Publishing is CI-only through Changesets and npm OIDC staged publishing. An npm maintainer must
   approve each stage with 2FA. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
-  pins normally remain equal, but do not manufacture native releases to match npm-only changes.
+  pins are independent (currently Kotlin 0.3.1, Swift 0.3.0); `yarn check:native-versions` only
+  requires each to be an exact version. Do not manufacture native releases to match npm-only changes.
 - Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
   blocks third-party lifecycle scripts and Git-hosted dependencies unless explicitly approved.
 
 ## CI/CD
 
 - **`ci.yml`** — invokes the complete reusable verification workflow on pull requests.
-- **`verification.yml`** — Yarn verification, package/API gates, Expo autolinking, Android, and iOS.
+- **`verification.yml`** — Yarn verification, package/API gates, Expo autolinking, native Expo
+  builds (minimum and current Expo SDK on Android and iOS), and bare Android and iOS builds.
 - **`changeset-check.yml`** — requires a user-facing or empty Changeset on pull requests.
 - **`quick-checks.yml`** — fast verification on pushes to non-master branches.
 - **`release.yml`** — verifies `master`, opens release pull requests, and stages release candidates
@@ -151,10 +155,27 @@ plan for when automated tests are added.
 - **GitHub CodeQL default setup** — GitHub-managed Actions, JavaScript/TypeScript, and Ruby
   analysis. Kotlin and Swift CodeQL are intentionally omitted to avoid duplicating the required
   native builds on every pull request.
+- **`claude-code-review-trigger.yml`** and **`claude-trigger.yml`** trigger the Claude review and
+  assistant workflows.
 - **`dependency-review.yml`** — blocks newly introduced vulnerable dependencies.
 
 Pull requests run full CI, including native builds. If the native layer changed, make sure the
 Android and iOS PR checks pass before merging; validate locally when you need faster feedback.
+
+## Supported Versions
+
+- The supported minimum (Expo SDK, React Native, React) is defined by the exact pins in
+  `compatibility-tests/expo-min`. CI builds that fixture and `examples/expo-example` (the current
+  Expo SDK) natively on Android and iOS.
+- The fixture's version lines never move automatically: Dependabot proposes only patch updates for
+  `expo`, `react`, and `react-native` there, which are fine to merge. Changing a version line
+  raises the minimum and is its own deliberate pull request that updates everything in the
+  "Supported minimum" Maintenance Matrix row.
+- `examples/expo-example` tracks the latest Expo SDK through Dependabot and the post-publish Expo
+  update workflow.
+- Do not add pull request gates that require dependencies to be the latest version.
+- `yarn check:supported-versions` (part of `yarn verify`) fails when the fixture pins, peer ranges,
+  README, or Dependabot rule disagree.
 
 ## Common Pitfalls
 
@@ -163,8 +184,8 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
   from the root.
 - `yarn prepare` regenerates `lib/` — if builds look stale, run `yarn clean && yarn prepare`.
 - The podspec resolves `oms-wallet-swift-sdk` and the Android module resolves
-  `io.github.0xsequence:oms-wallet-kotlin-sdk` — bump native SDK versions in the podspec and
-  `android/build.gradle` together.
+  `io.github.0xsequence:oms-wallet-kotlin-sdk`. Native SDK pins live in the podspec (Swift)
+  and `android/build.gradle` (Kotlin); update whichever dependency is actually changing.
 - Turbo cache can mask failures: if something seems wrong, run with `--force` to skip the cache.
 - Signed commits are required (enforced by branch protection) — configure `git commit -S` locally.
 
@@ -179,3 +200,4 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
 | Publish/release behavior                  | `PUBLISHING.md`, `.changeset/config.json`, release workflows |
 | Repo structure (new top-level dirs)       | `AGENTS.md` structure section                             |
 | Contributing workflow                     | `CONTRIBUTING.md`, `README.md`                            |
+| Supported minimum (Expo / React Native / React) | `compatibility-tests/expo-min` pins, prebuild template, and `package-lock.json`; `package.json#peerDependencies`; `README.md`; Dependabot ignore rule; new-polygon-docs `wallets/sdk/react-native/quickstart.md`; `0xsequence/kotlin-sdk` Expo compatibility fixture (`compatibility-tests`). Checked by `yarn check:supported-versions`. |

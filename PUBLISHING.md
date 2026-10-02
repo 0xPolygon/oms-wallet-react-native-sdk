@@ -67,13 +67,14 @@ already published.
 
 The npm wrapper version is independent of the native SDK version:
 
-- `android/build.gradle` and `OmsWalletReactNativeSdk.podspec` normally pin the same native SDK
-  version.
+- `android/build.gradle` (Kotlin SDK) and `OmsWalletReactNativeSdk.podspec` (Swift SDK) each pin an
+  exact native SDK version. The current pins are Kotlin 0.3.1 and Swift 0.3.0. They are not
+  required to match; `yarn check:native-versions` only verifies that both pins are exact versions.
 - A native SDK bump requires confirming that both Maven Central and CocoaPods artifacts exist,
   running Android and iOS builds, and adding a changeset based on the React Native consumer impact.
 - React Native-only changes may release npm without changing either native dependency.
 - Release automation never changes native dependency versions.
-- Any intentional Swift/Kotlin version divergence requires explicit approval and documentation.
+- Changing either pin independently of the other should be noted in the changeset and pull request.
 
 ## Local release-readiness checks
 

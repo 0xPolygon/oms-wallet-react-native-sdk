@@ -1,0 +1,19 @@
+{
+  "name": "oms-wallet-react-native-expo-min",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "prebuild": "expo prebuild --no-install --clean --template expo-template-bare-minimum@56.0.37"
+  },
+  "dependencies": {
+    "@polygonlabs/oms-wallet-react-native": "^0.3.1",
+    "expo": "56.0.23",
+    "react": "19.2.3",
+    "react-native": "0.85.3"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  },
+  "packageManager": "npm@10.9.7"
+}

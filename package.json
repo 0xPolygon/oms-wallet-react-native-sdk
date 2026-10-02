@@ -62,6 +62,9 @@
     "expo-example:install:published": "bash scripts/install-expo-example-dependencies.sh --published",
     "expo-example:prebuild": "cd examples/expo-example && npx expo prebuild --no-install --clean",
     "expo-example:verify-autolinking": "node scripts/verify-expo-autolinking.mjs",
+    "expo-min:install": "bash scripts/install-expo-example-dependencies.sh compatibility-tests/expo-min",
+    "expo-min:prebuild": "cd compatibility-tests/expo-min && npm run prebuild --",
+    "expo-min:verify-autolinking": "node scripts/verify-expo-autolinking.mjs compatibility-tests/expo-min",
     "clean": "del-cli android/build examples/sdk-example/android/build examples/sdk-example/android/app/build examples/sdk-example/ios/build examples/trails-actions-example/android/build examples/trails-actions-example/android/app/build examples/trails-actions-example/ios/build lib",
     "build": "bob build",
     "prepare": "yarn build && husky",
@@ -73,6 +76,7 @@
     "check:exports": "publint",
     "check:package": "node scripts/check-package.mjs",
     "check:native-versions": "node scripts/check-native-sdk-versions.mjs",
+    "check:supported-versions": "node scripts/check-supported-versions.mjs",
     "codegen-drift-check": "yarn build && yarn check:api:built && yarn check:exports && yarn check:native-versions && yarn check:package",
     "ci:stage-release": "node scripts/stage-npm-package.mjs",
     "test": "yarn build && yarn test:built",
@@ -82,7 +86,7 @@
     "commitlint": "commitlint",
     "lint-staged": "lint-staged",
     "changeset": "changeset",
-    "verify": "yarn lint && yarn typecheck && yarn build && yarn test:built && yarn check:api:built && yarn check:exports && yarn check:native-versions"
+    "verify": "yarn lint && yarn typecheck && yarn build && yarn test:built && yarn check:api:built && yarn check:exports && yarn check:native-versions && yarn check:supported-versions"
   },
   "keywords": [
     "react-native",

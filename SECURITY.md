@@ -4,23 +4,18 @@
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Report vulnerabilities by emailing **dev@sequence.xyz** with the subject line
-`[SECURITY] react-native-sdk — <brief description>`.
-
-Include:
-- A description of the vulnerability and its potential impact
-- Steps to reproduce or a proof-of-concept
-- Affected versions (check `package.json` for the current version)
-
-We aim to acknowledge reports within 2 business days and to provide a fix or mitigation timeline
-within 7 business days.
+Report vulnerabilities privately with the **Report a vulnerability** button in this repository's
+[Security tab](https://github.com/0xPolygon/oms-wallet-react-native-sdk/security). Reports in scope
+for Polygon's bug bounty programs can also go through them. See the
+[Polygon security policy](https://github.com/0xPolygon/.github/blob/main/SECURITY.md) for channels,
+what to include, and response times.
 
 ## Supported versions
 
 | Version | Supported |
 |---|---|
-| 0.1.x-alpha | ✅ Active development |
-| Earlier | ❌ Not supported |
+| 0.3.x | ✅ Supported |
+| Earlier than 0.3.0 | ❌ Not supported |
 
 ## Scope
 

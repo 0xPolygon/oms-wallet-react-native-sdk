@@ -29,9 +29,13 @@ without reviewing the dependency and documenting why the exception is safe.
 | `lib/` | Built output — generated, do not edit directly |
 | `android/` | Kotlin native module |
 | `ios/` | ObjC/Swift native module |
+| `scripts/` | Release, package-check, and Expo example automation scripts |
+| `test/` | Unit tests run by `yarn test` |
+| `.github/` | CI, Changeset, release, and dependency-review workflows |
 | `examples/sdk-example/` | React Native CLI example (Yarn workspace) |
 | `examples/trails-actions-example/` | Trails demo (Yarn workspace) |
 | `examples/expo-example/` | Expo example — **not** a Yarn workspace; install with `yarn expo-example:install` from the repo root |
+| `compatibility-tests/` | Build-only fixtures; `expo-min/` pins the oldest supported Expo SDK — **not** a Yarn workspace; install with `yarn expo-min:install` |
 
 ## Development workflow
 

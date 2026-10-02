@@ -1,6 +1,6 @@
 # Trails Actions Example
 
-React Native demo app for using the OMS Client React Native SDK wallet flow with
+React Native demo app for using the OMS Wallet React Native SDK wallet flow with
 Trails action resolution.
 
 ## Examples

@@ -19,9 +19,9 @@ Install dependencies from the repo root:
 yarn expo-example:install
 ```
 
-The install helper uses the published npm package when this SDK version exists.
-Before publication, it packs the local SDK and installs that tarball into this
-example.
+The install helper packs the local SDK and installs that tarball into this
+example. To install the published npm package instead, run
+`yarn expo-example:install:published`.
 
 Build and launch a development build:
 
