@@ -3204,7 +3204,7 @@ __metadata:
     publint: "npm:^0.3.22"
     react: "npm:19.2.3"
     react-native: "npm:0.85.3"
-    react-native-builder-bob: "npm:^0.42.1"
+    react-native-builder-bob: "npm:^0.43.1"
     turbo: "npm:^2.8.21"
     typescript: "npm:^6.0.2"
   peerDependencies:
@@ -11082,7 +11082,7 @@ __metadata:
     "@types/react": "npm:^19.2.0"
     react: "npm:19.2.3"
     react-native: "npm:0.85.3"
-    react-native-builder-bob: "npm:^0.42.1"
+    react-native-builder-bob: "npm:^0.43.1"
     react-native-inappbrowser-reborn: "npm:3.7.1"
     react-native-monorepo-config: "npm:^0.4.0"
   languageName: unknown
@@ -11109,7 +11109,7 @@ __metadata:
     "@types/react": "npm:^19.2.0"
     react: "npm:19.2.3"
     react-native: "npm:0.85.3"
-    react-native-builder-bob: "npm:^0.42.1"
+    react-native-builder-bob: "npm:^0.43.1"
     react-native-inappbrowser-reborn: "npm:3.7.1"
     react-native-monorepo-config: "npm:^0.4.0"
     react-native-webview: "npm:^13.16.1"
@@ -11843,9 +11843,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-builder-bob@npm:^0.42.1":
-  version: 0.42.1
-  resolution: "react-native-builder-bob@npm:0.42.1"
+"react-native-builder-bob@npm:^0.43.1":
+  version: 0.43.1
+  resolution: "react-native-builder-bob@npm:0.43.1"
   dependencies:
     "@babel/core": "npm:^7.29.0"
     "@babel/plugin-transform-flow-strip-types": "npm:^7.27.1"
@@ -11866,13 +11866,12 @@ __metadata:
     json5: "npm:^2.2.3"
     kleur: "npm:^4.1.5"
     prompts: "npm:^2.4.2"
-    react-native-monorepo-config: "npm:^0.3.3"
     typescript: "npm:^6.0.3"
     which: "npm:^6.0.1"
     yargs: "npm:^18.0.0"
   bin:
     bob: bin/bob
-  checksum: 10c0/9d4eb9097eef8e204ffb1ab8c861e90c8b8b6bfc5f4cb86388d1015322fb205c3c8a08db19cd6803f2505ebba9311a7186949e2023f434d097c6e026e7fd013f
+  checksum: 10c0/aa7423d549f3dedac66950482dd4c62c6ad42f3a04c47ac23e37bb454103b5fc18fc1bd889f0156d64c3e786f47f6046705736cbe43af9a0563ae90f14f41792
   languageName: node
   linkType: hard
 
@@ -11885,16 +11884,6 @@ __metadata:
   peerDependencies:
     react-native: ">=0.56"
   checksum: 10c0/eb5560b9ee8ffba05f28d09b356076b5533a19fd115b2d35c55877e8dfe388666e2ab38b6224e1cdec8ab9db0d2f64c646b33ba20808e2ef31b7ef647644f129
-  languageName: node
-  linkType: hard
-
-"react-native-monorepo-config@npm:^0.3.3":
-  version: 0.3.3
-  resolution: "react-native-monorepo-config@npm:0.3.3"
-  dependencies:
-    escape-string-regexp: "npm:^5.0.0"
-    fast-glob: "npm:^3.3.3"
-  checksum: 10c0/42dd8de1bb976c794fe1124ab08fba4645f189c7bdbdcd24dc0e05b639591e690891f89e5dba33c57691840365af85b48004c29c1c128ff195a95e766bb9752e
   languageName: node
   linkType: hard
 
