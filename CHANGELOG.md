@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+### Patch Changes
+
+- [#126](https://github.com/0xPolygon/oms-wallet-react-native-sdk/pull/126) [`583950f`](https://github.com/0xPolygon/oms-wallet-react-native-sdk/commit/583950f301210c602608c3d392bbe3266faa855a) Thanks [@tolgahan-arikan](https://github.com/tolgahan-arikan)! - Use Swift SDK 0.3.1 and Kotlin SDK 0.3.2 so wallet import trusts the WaaS v1.1.1 enclave measurements on Staging and Production.
+
 ## 0.3.1
 
 ### Patch Changes
