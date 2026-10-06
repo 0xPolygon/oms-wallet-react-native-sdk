@@ -136,7 +136,7 @@ automated unit tests in `test/`.
 - Publishing is CI-only through Changesets and npm OIDC staged publishing. An npm maintainer must
   approve each stage with 2FA. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
-  pins are independent (currently Kotlin 0.3.1, Swift 0.3.0); `yarn check:native-versions` only
+  pins are independent (currently Kotlin 0.3.2, Swift 0.3.1); `yarn check:native-versions` only
   requires each to be an exact version. Do not manufacture native releases to match npm-only changes.
 - Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
   blocks third-party lifecycle scripts and Git-hosted dependencies unless explicitly approved.
