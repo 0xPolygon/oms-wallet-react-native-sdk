@@ -11,15 +11,18 @@ import technology.polygon.omswallet.OMSWalletEmailSessionAuth
 import technology.polygon.omswallet.OMSWalletNetworks
 import technology.polygon.omswallet.OMSWalletOidcSessionAuth
 import technology.polygon.omswallet.OMSWalletOidcSessionAuthFlow
-import technology.polygon.omswallet.OMSWalletSessionState
+import technology.polygon.omswallet.OMSWalletSession
+import technology.polygon.omswallet.OMSWalletSessionChangeEvent
 import technology.polygon.omswallet.OMSWalletException
 import technology.polygon.omswallet.OMSWalletUpstreamError
 import technology.polygon.omswallet.SolanaNetwork
+import technology.polygon.omswallet.TronNetwork
 import technology.polygon.omswallet.models.AbiArg
 import technology.polygon.omswallet.models.AccessGrant
 import technology.polygon.omswallet.models.AccessGrantPage
 import technology.polygon.omswallet.models.AccessGrantType
 import technology.polygon.omswallet.models.AuthorizedRemoteAccess
+import technology.polygon.omswallet.models.BalancesResult
 import technology.polygon.omswallet.models.ContractVerificationStatus
 import technology.polygon.omswallet.models.EncryptedWalletImportKeyMaterial
 import technology.polygon.omswallet.models.FeeOption
@@ -36,6 +39,8 @@ import technology.polygon.omswallet.models.RemoteCredentialMetadata
 import technology.polygon.omswallet.models.SendTransactionRequest
 import technology.polygon.omswallet.models.SmartSessionGrant
 import technology.polygon.omswallet.models.SmartSessionGrantUsage
+import technology.polygon.omswallet.models.SortBy
+import technology.polygon.omswallet.models.SortOrder
 import technology.polygon.omswallet.models.SolanaBalance
 import technology.polygon.omswallet.models.SolanaBalancesResult
 import technology.polygon.omswallet.models.SolanaNetworkError
@@ -46,7 +51,6 @@ import technology.polygon.omswallet.models.TokenBalance
 import technology.polygon.omswallet.models.ContractTokenBalance
 import technology.polygon.omswallet.models.TokenBalancesPage
 import technology.polygon.omswallet.models.TokenBalancesPageRequest
-import technology.polygon.omswallet.models.TokenBalancesResult
 import technology.polygon.omswallet.models.TokenContractInfo
 import technology.polygon.omswallet.models.TokenMetadata
 import technology.polygon.omswallet.models.TokenMetadataAsset
@@ -56,6 +60,9 @@ import technology.polygon.omswallet.models.TransactionMode
 import technology.polygon.omswallet.models.TransactionStatusPollingOptions
 import technology.polygon.omswallet.models.TransactionStatusResponse
 import technology.polygon.omswallet.models.TransactionTransfer
+import technology.polygon.omswallet.models.TronBalance
+import technology.polygon.omswallet.models.TronBalancesResult
+import technology.polygon.omswallet.models.TronVerificationStatus
 import technology.polygon.omswallet.models.Wallet
 import technology.polygon.omswallet.models.WalletCredential
 import technology.polygon.omswallet.models.WalletImportCipherSuite
@@ -64,13 +71,13 @@ import technology.polygon.omswallet.models.WalletImportRecipientKey
 import technology.polygon.omswallet.models.WalletType
 import technology.polygon.omswallet.wallet.CompleteAuthResult
 import technology.polygon.omswallet.wallet.CustomOidcProviderConfig
-import technology.polygon.omswallet.wallet.OidcRedirectAuthMode
+import technology.polygon.omswallet.wallet.OidcAuthMode
 import technology.polygon.omswallet.wallet.OidcRedirectAuthResult
 import technology.polygon.omswallet.wallet.OmsRelayOidcProvider
 import technology.polygon.omswallet.wallet.OmsRelayOidcProviders
 import technology.polygon.omswallet.wallet.PendingWalletSelection
+import technology.polygon.omswallet.wallet.WalletActivationResult
 import technology.polygon.omswallet.wallet.WalletSelectionBehavior
-import technology.polygon.omswallet.wallet.WalletSelectionResult
 import technology.polygon.omswallet.wallet.WalletClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -108,7 +115,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val pendingFeeOptionSelections = ConcurrentHashMap<String, CompletableDeferred<FeeOptionSelection?>>()
   private val pendingWalletSelections = ConcurrentHashMap<String, StoredPendingWalletSelection>()
-  private val sessionExpiredUnsubscribes = ConcurrentHashMap<String, () -> Unit>()
+  private val sessionChangeUnsubscribes = ConcurrentHashMap<String, () -> Unit>()
   private val clients = ConcurrentHashMap<String, OMSWallet>()
 
   override fun createClient(
@@ -118,20 +125,14 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   ) {
     try {
       clearPendingWalletSelections(clientId)
-      sessionExpiredUnsubscribes.remove(clientId)?.invoke()
+      sessionChangeUnsubscribes.remove(clientId)?.invoke()
       val activeClient = OMSWallet(
         context = reactApplicationContext,
         publishableKey = publishableKey
       )
       clients[clientId] = activeClient
-      sessionExpiredUnsubscribes[clientId] = activeClient.wallet.onSessionExpired { event ->
-        emitOnSessionExpired(
-          Arguments.createMap().apply {
-            putString("clientId", clientId)
-            putMap("session", sessionMap(event.session))
-            putString("expiredAt", event.expiredAt)
-          }
-        )
+      sessionChangeUnsubscribes[clientId] = activeClient.wallet.onSessionChange { event ->
+        emitOnSessionChange(sessionChangeEventMap(clientId, event))
       }
       promise.resolve(null)
     } catch (throwable: Throwable) {
@@ -139,17 +140,23 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun getWalletAddress(clientId: String, promise: Promise) {
-    try {
-      promise.resolve(requireClient(clientId).wallet.walletAddress)
-    } catch (throwable: Throwable) {
-      reject(promise, throwable)
-    }
-  }
-
   override fun getSession(clientId: String, promise: Promise) {
     try {
-      promise.resolve(sessionMap(requireClient(clientId).wallet.session))
+      val wallet = requireClient(clientId).wallet
+      // `session` is non-null exactly when `activeWallet` is; read both together.
+      val activeWallet = wallet.activeWallet
+      val session = wallet.session
+      promise.resolve(
+        Arguments.createMap().apply {
+          if (activeWallet == null || session == null) {
+            putNull("activeWallet")
+            putNull("session")
+          } else {
+            putMap("activeWallet", walletMap(activeWallet))
+            putMap("session", sessionMap(session))
+          }
+        }
+      )
     } catch (throwable: Throwable) {
       reject(promise, throwable)
     }
@@ -248,8 +255,8 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           walletType = walletType.toWalletType(),
           walletSelection = walletSelection.toOptionalWalletSelectionBehavior(),
           sessionLifetimeSeconds = sessionLifetimeSeconds.toOptionalSessionLifetimeSeconds(),
-          authorizeParams = authorizeParamsJson.toStringMap("authorizeParams") ?: emptyMap(),
-          loginHint = loginHint
+          loginHint = loginHint,
+          authorizeParams = authorizeParamsJson.toStringMap("authorizeParams") ?: emptyMap()
         )
       }
       Arguments.createMap().apply {
@@ -304,6 +311,12 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun claimWallet(clientId: String, walletId: String, promise: Promise) {
+    launch(promise) {
+      walletActivationResultMap(requireClient(clientId).wallet.claimWallet(walletId))
+    }
+  }
+
   override fun createWallet(clientId: String, walletType: String?, reference: String?, promise: Promise) {
     launch(promise) {
       walletActivationResultMap(
@@ -329,6 +342,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         privateKey != null && privateKeyBytesJson == null -> when (type) {
           WalletType.Ethereum -> WalletImportPrivateKey.Ethereum(privateKey)
           WalletType.Solana -> WalletImportPrivateKey.Solana(privateKey)
+          WalletType.Tron -> WalletImportPrivateKey.Tron(privateKey)
           else -> error("Unsupported wallet type: $walletType")
         }
         privateKey == null && privateKeyBytesJson != null -> {
@@ -336,6 +350,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           when (type) {
             WalletType.Ethereum -> WalletImportPrivateKey.EthereumBytes(bytes)
             WalletType.Solana -> WalletImportPrivateKey.SolanaBytes(bytes)
+            WalletType.Tron -> WalletImportPrivateKey.TronBytes(bytes)
             else -> error("Unsupported wallet type: $walletType")
           }
         }
@@ -417,6 +432,25 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun claimAndSelectWalletForPendingSelection(
+    clientId: String,
+    pendingSelectionId: String,
+    walletId: String,
+    promise: Promise
+  ) {
+    launch(promise) {
+      val pendingSelection =
+        pendingWalletSelections[pendingSelectionId]
+          ?: error("Pending wallet selection is no longer available")
+      if (pendingSelection.clientId != clientId) {
+        error("Pending wallet selection belongs to a different OMS client")
+      }
+      val result = pendingSelection.selection.claimAndSelectWallet(walletId)
+      pendingWalletSelections.remove(pendingSelectionId)
+      walletActivationResultMap(result)
+    }
+  }
+
   override fun signOut(clientId: String, promise: Promise) {
     try {
       clearPendingWalletSelections(clientId)
@@ -439,6 +473,16 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
 
   override fun signSolanaMessage(clientId: String, message: String, promise: Promise) {
     launch(promise) { requireClient(clientId).wallet.signSolanaMessage(message) }
+  }
+
+  override fun signTronMessage(clientId: String, message: String, promise: Promise) {
+    launch(promise) { requireClient(clientId).wallet.signTronMessage(message) }
+  }
+
+  override fun signTronTypedData(clientId: String, typedDataJson: String, promise: Promise) {
+    launch(promise) {
+      requireClient(clientId).wallet.signTronTypedData(json.parseToJsonElement(typedDataJson))
+    }
   }
 
   override fun signTypedData(clientId: String, chainId: String, typedDataJson: String, promise: Promise) {
@@ -509,7 +553,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       val activeClient = requireClient(clientId)
       val result = activeClient.wallet.callContract(
         network = activeClient.requireNetwork(chainId),
-        contract = contractAddress,
+        contractAddress = contractAddress,
         method = method,
         args = argsJson.toAbiArgs(),
         mode = mode.toTransactionMode(),
@@ -550,6 +594,74 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           to = to,
           amount = BigInteger(amount),
           mode = mode.toTransactionMode(),
+          selectFeeOption = feeOptionSelector(feeOptionSelectorId),
+          waitForStatus = waitForStatus,
+          statusPolling = statusPollingOptions(
+            timeoutMs = statusPollingTimeoutMs,
+            intervalMs = statusPollingIntervalMs,
+            fastIntervalMs = statusPollingFastIntervalMs,
+            fastPollCount = statusPollingFastPollCount
+          )
+        )
+      )
+    }
+  }
+
+  override fun sendTronTransaction(
+    clientId: String,
+    network: String,
+    to: String,
+    value: String?,
+    data: String?,
+    feeOptionSelectorId: String?,
+    waitForStatus: Boolean,
+    statusPollingTimeoutMs: String?,
+    statusPollingIntervalMs: String?,
+    statusPollingFastIntervalMs: String?,
+    statusPollingFastPollCount: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      sendTransactionResponseMap(
+        requireClient(clientId).wallet.sendTronTransaction(
+          network = network.toTronNetwork(),
+          to = to,
+          value = value?.let(::BigInteger) ?: BigInteger.ZERO,
+          data = data,
+          selectFeeOption = feeOptionSelector(feeOptionSelectorId),
+          waitForStatus = waitForStatus,
+          statusPolling = statusPollingOptions(
+            timeoutMs = statusPollingTimeoutMs,
+            intervalMs = statusPollingIntervalMs,
+            fastIntervalMs = statusPollingFastIntervalMs,
+            fastPollCount = statusPollingFastPollCount
+          )
+        )
+      )
+    }
+  }
+
+  override fun callTronContract(
+    clientId: String,
+    network: String,
+    contractAddress: String,
+    method: String,
+    argsJson: String?,
+    feeOptionSelectorId: String?,
+    waitForStatus: Boolean,
+    statusPollingTimeoutMs: String?,
+    statusPollingIntervalMs: String?,
+    statusPollingFastIntervalMs: String?,
+    statusPollingFastPollCount: String?,
+    promise: Promise
+  ) {
+    launch(promise) {
+      sendTransactionResponseMap(
+        requireClient(clientId).wallet.callTronContract(
+          network = network.toTronNetwork(),
+          contractAddress = contractAddress,
+          method = method,
+          args = argsJson.toAbiArgs(),
           selectFeeOption = feeOptionSelector(feeOptionSelectorId),
           waitForStatus = waitForStatus,
           statusPolling = statusPollingOptions(
@@ -664,9 +776,26 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun getTronBalances(clientId: String, paramsJson: String, promise: Promise) {
+    launch(promise) {
+      val params = paramsJson.toJsonObject("params")
+      tronBalancesResultMap(
+        requireClient(clientId).indexer.getTronBalances(
+          walletAddress = params.requiredStringParam("walletAddress"),
+          networks = params.tronNetworksParam(),
+          includeMetadata = params.booleanParam("includeMetadata") ?: true,
+          omitNativeBalances = params.booleanParam("omitNativeBalances"),
+          contractAddresses = params.stringListParam("contractAddresses"),
+          excludedContractAddresses = params.stringListParam("excludedContractAddresses")
+        )
+      )
+    }
+  }
+
   override fun verifyMessageSignature(
     clientId: String,
     chainId: String,
+    walletAddress: String?,
     message: String,
     signature: String,
     promise: Promise
@@ -676,25 +805,32 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       activeClient.wallet.isValidMessageSignature(
         network = activeClient.requireNetwork(chainId),
         message = message,
-        signature = signature
+        signature = signature,
+        walletAddress = walletAddress
       )
     }
   }
 
   override fun verifySolanaMessageSignature(
     clientId: String,
+    walletAddress: String?,
     message: String,
     signature: String,
     promise: Promise
   ) {
     launch(promise) {
-      requireClient(clientId).wallet.isValidSolanaMessageSignature(message, signature)
+      requireClient(clientId).wallet.isValidSolanaMessageSignature(
+        message = message,
+        signature = signature,
+        walletAddress = walletAddress
+      )
     }
   }
 
   override fun verifyTypedDataSignature(
     clientId: String,
     chainId: String,
+    walletAddress: String?,
     typedDataJson: String,
     signature: String,
     promise: Promise
@@ -704,7 +840,40 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       activeClient.wallet.isValidTypedDataSignature(
         network = activeClient.requireNetwork(chainId),
         typedData = json.parseToJsonElement(typedDataJson),
-        signature = signature
+        signature = signature,
+        walletAddress = walletAddress
+      )
+    }
+  }
+
+  override fun verifyTronMessageSignature(
+    clientId: String,
+    walletAddress: String?,
+    message: String,
+    signature: String,
+    promise: Promise
+  ) {
+    launch(promise) {
+      requireClient(clientId).wallet.isValidTronMessageSignature(
+        message = message,
+        signature = signature,
+        walletAddress = walletAddress
+      )
+    }
+  }
+
+  override fun verifyTronTypedDataSignature(
+    clientId: String,
+    walletAddress: String?,
+    typedDataJson: String,
+    signature: String,
+    promise: Promise
+  ) {
+    launch(promise) {
+      requireClient(clientId).wallet.isValidTronTypedDataSignature(
+        typedData = json.parseToJsonElement(typedDataJson),
+        signature = signature,
+        walletAddress = walletAddress
       )
     }
   }
@@ -807,8 +976,8 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   }
 
   override fun invalidate() {
-    sessionExpiredUnsubscribes.values.forEach { it.invoke() }
-    sessionExpiredUnsubscribes.clear()
+    sessionChangeUnsubscribes.values.forEach { it.invoke() }
+    sessionChangeUnsubscribes.clear()
     clients.clear()
     pendingWalletSelections.clear()
     scope.cancel()
@@ -840,12 +1009,17 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         clearPendingWalletSelections(clientId)
         Arguments.createMap().apply {
           putString("type", "walletSelected")
-          putString("walletAddress", result.walletAddress)
           putMap("wallet", walletMap(result.wallet))
           putArray(
             "wallets",
             Arguments.createArray().apply {
               result.wallets.forEach { pushMap(walletMap(it)) }
+            }
+          )
+          putArray(
+            "claimableWallets",
+            Arguments.createArray().apply {
+              result.claimableWallets.forEach { pushMap(walletMap(it)) }
             }
           )
           putMap("credential", walletCredentialMap(result.credential))
@@ -856,12 +1030,17 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         Arguments.createMap().apply {
           clearPendingWalletSelections(clientId)
           putString("type", "walletSelection")
-          putNull("walletAddress")
           putNull("wallet")
           putArray(
             "wallets",
             Arguments.createArray().apply {
               result.pendingSelection.wallets.forEach { pushMap(walletMap(it)) }
+            }
+          )
+          putArray(
+            "claimableWallets",
+            Arguments.createArray().apply {
+              result.pendingSelection.claimableWallets.forEach { pushMap(walletMap(it)) }
             }
           )
           putMap("credential", walletCredentialMap(result.pendingSelection.credential))
@@ -930,6 +1109,12 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
           pendingSelection.wallets.forEach { pushMap(walletMap(it)) }
         }
       )
+      putArray(
+        "claimableWallets",
+        Arguments.createArray().apply {
+          pendingSelection.claimableWallets.forEach { pushMap(walletMap(it)) }
+        }
+      )
       putMap("credential", walletCredentialMap(pendingSelection.credential))
     }
   }
@@ -938,18 +1123,45 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     pendingWalletSelections.entries.removeIf { it.value.clientId == clientId }
   }
 
-  private fun walletActivationResultMap(result: WalletSelectionResult): WritableMap =
+  private fun walletActivationResultMap(result: WalletActivationResult): WritableMap =
     Arguments.createMap().apply {
-      putString("walletAddress", result.walletAddress)
       putMap("wallet", walletMap(result.wallet))
     }
 
-  private fun sessionMap(session: OMSWalletSessionState): WritableMap =
+  private fun sessionChangeEventMap(clientId: String, event: OMSWalletSessionChangeEvent): WritableMap =
     Arguments.createMap().apply {
-      putNullableString("walletAddress", session.walletAddress)
-      putNullableString("expiresAt", session.expiresAt)
+      putString("clientId", clientId)
+      putString(
+        "reason",
+        when (event) {
+          is OMSWalletSessionChangeEvent.SignedIn -> "signedIn"
+          is OMSWalletSessionChangeEvent.WalletChanged -> "walletChanged"
+          is OMSWalletSessionChangeEvent.ExpiryUpdated -> "expiryUpdated"
+          OMSWalletSessionChangeEvent.SignedOut -> "signedOut"
+          is OMSWalletSessionChangeEvent.Expired -> "expired"
+        }
+      )
+      event.activeWallet?.let { putMap("activeWallet", walletMap(it)) } ?: putNull("activeWallet")
+      event.session?.let { putMap("session", sessionMap(it)) } ?: putNull("session")
+      if (event is OMSWalletSessionChangeEvent.Expired) {
+        val expired = event.expiredSession
+        putMap(
+          "expiredSession",
+          Arguments.createMap().apply {
+            expired.wallet?.let { putMap("wallet", walletMap(it)) } ?: putNull("wallet")
+            putMap("session", sessionMap(expired.session))
+            putString("expiredAt", expired.expiredAt)
+          }
+        )
+      } else {
+        putNull("expiredSession")
+      }
+    }
+
+  private fun sessionMap(session: OMSWalletSession): WritableMap =
+    Arguments.createMap().apply {
+      putString("expiresAt", session.expiresAt)
       when (val auth = session.auth) {
-        null -> putNull("auth")
         is OMSWalletEmailSessionAuth -> putMap(
           "auth",
           Arguments.createMap().apply {
@@ -977,7 +1189,7 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       }
     }
 
-  private fun tokenBalancesResultMap(result: TokenBalancesResult): WritableMap =
+  private fun tokenBalancesResultMap(result: BalancesResult): WritableMap =
     Arguments.createMap().apply {
       putInt("status", result.status)
       result.page?.let { putMap("page", tokenBalancesPageMap(it)) } ?: putNull("page")
@@ -1010,6 +1222,24 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private fun tokenBalancesPageMap(page: TokenBalancesPage): WritableMap =
     Arguments.createMap().apply {
       putInt("page", page.page)
+      putNullableString("column", page.column)
+      putNullableString("beforeJson", page.before?.toString())
+      putNullableString("afterJson", page.after?.toString())
+      page.sort?.let { sort ->
+        putArray(
+          "sort",
+          Arguments.createArray().apply {
+            sort.forEach {
+              pushMap(
+                Arguments.createMap().apply {
+                  putString("column", it.column)
+                  putString("order", it.order.wireValue)
+                }
+              )
+            }
+          }
+        )
+      } ?: putNull("sort")
       putInt("pageSize", page.pageSize)
       putBoolean("more", page.more)
     }
@@ -1364,6 +1594,53 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       })
     }
 
+  private fun tronBalanceMap(balance: TronBalance): WritableMap =
+    Arguments.createMap().apply {
+      putString("network", balance.network.wireValue)
+      putString("accountAddress", balance.accountAddress)
+      putString("name", balance.name)
+      putString("symbol", balance.symbol)
+      putInt("decimals", balance.decimals)
+      putString("balance", balance.balance)
+      putString("formattedBalance", balance.formattedBalance)
+      putNullableString("imageUrl", balance.imageUrl)
+      putNullableString("metadataUri", balance.metadataUri)
+      putString("verificationStatus", balance.verificationStatus.bridgeValue)
+      putString("verificationSource", balance.verificationSource)
+      putNullableString("priceUSD", balance.priceUSD)
+      putNullableString("balanceUSD", balance.balanceUSD)
+      when (balance) {
+        is TronBalance.Native -> {
+          putString("assetType", "native")
+          putNull("tokenStandard")
+          putNull("contractAddress")
+        }
+        is TronBalance.FungibleToken -> {
+          putString("assetType", "fungible-token")
+          putString("tokenStandard", "trc20")
+          putString("contractAddress", balance.contractAddress)
+        }
+      }
+    }
+
+  private fun tronBalancesResultMap(result: TronBalancesResult): WritableMap =
+    Arguments.createMap().apply {
+      putInt("status", result.status)
+      putArray("balances", Arguments.createArray().apply {
+        result.balances.forEach { pushMap(tronBalanceMap(it)) }
+      })
+      putArray("errors", Arguments.createArray().apply {
+        result.errors.forEach {
+          pushMap(
+            Arguments.createMap().apply {
+              putString("network", it.network.wireValue)
+              putString("reason", it.reason)
+            }
+          )
+        }
+      })
+    }
+
   private fun pageMap(page: Page): WritableMap =
     Arguments.createMap().apply {
       page.limit?.let { putDouble("limit", it.toDouble()) } ?: putNull("limit")
@@ -1381,8 +1658,13 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     when (this?.lowercase()) {
       null, "ethereum" -> WalletType.Ethereum
       "solana" -> WalletType.Solana
+      "tron" -> WalletType.Tron
       else -> error("Unsupported wallet type: $this")
     }
+
+  private fun String.toTronNetwork(): TronNetwork =
+    TronNetwork.entries.firstOrNull { it.wireValue == this }
+      ?: error("Unsupported Tron network: $this")
 
   private fun String.toSolanaNetwork(): SolanaNetwork =
     when (lowercase()) {
@@ -1415,6 +1697,13 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       SolanaVerificationSource.Jupiter -> "jupiter"
       SolanaVerificationSource.SolflareUtl -> "solflare-utl"
       SolanaVerificationSource.None -> "none"
+    }
+
+  private val TronVerificationStatus.bridgeValue: String
+    get() = when (this) {
+      TronVerificationStatus.Verified -> "verified"
+      TronVerificationStatus.Unverified -> "unverified"
+      TronVerificationStatus.Unknown -> "unknown"
     }
 
   private val SolanaTokenProgram.bridgeValue: String
@@ -1492,10 +1781,10 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     }
 
     return TransactionStatusPollingOptions(
-      fastPollIntervalMillis = fastIntervalMs.toLongOrNullParam("statusPolling.fastIntervalMs") ?: 400L,
+      fastIntervalMs = fastIntervalMs.toLongOrNullParam("statusPolling.fastIntervalMs") ?: 400L,
       fastPollCount = fastPollCount.toIntOrNullParam("statusPolling.fastPollCount") ?: 5,
-      pollIntervalMillis = intervalMs.toLongOrNullParam("statusPolling.intervalMs") ?: 2_000L,
-      timeoutMillis = timeoutMs.toLongOrNullParam("statusPolling.timeoutMs") ?: 60_000L
+      intervalMs = intervalMs.toLongOrNullParam("statusPolling.intervalMs") ?: 2_000L,
+      timeoutMs = timeoutMs.toLongOrNullParam("statusPolling.timeoutMs") ?: 60_000L
     )
   }
 
@@ -1554,6 +1843,13 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
       listOf(SolanaNetwork.Mainnet, SolanaNetwork.Devnet)
     }
 
+  private fun JsonObject.tronNetworksParam(): List<TronNetwork> =
+    if (containsKey("networks")) {
+      stringListParam("networks").map { it.toTronNetwork() }
+    } else {
+      listOf(TronNetwork.Mainnet, TronNetwork.Nile)
+    }
+
   private fun JsonObject.indexerNetworkTypeParam(name: String): IndexerNetworkType? =
     stringParam(name)?.let { value ->
       IndexerNetworkType.entries.firstOrNull { it.wireValue == value }
@@ -1579,7 +1875,19 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     val value = objectParam("page") ?: return TokenBalancesPageRequest()
     return TokenBalancesPageRequest(
       page = value.intParam("page") ?: 0,
-      pageSize = value.intParam("pageSize") ?: 40
+      pageSize = value.intParam("pageSize") ?: 40,
+      column = value.stringParam("column"),
+      before = value["before"]?.takeUnless { it is JsonNull },
+      after = value["after"]?.takeUnless { it is JsonNull },
+      sort = value["sort"]?.takeUnless { it is JsonNull }?.jsonArray?.map { element ->
+        val item = element.jsonObject
+        SortBy(
+          column = item.requiredStringParam("column"),
+          order = item.requiredStringParam("order").let { order ->
+            SortOrder.entries.firstOrNull { it.wireValue == order } ?: error("Unsupported sort order: $order")
+          }
+        )
+      }
     )
   }
 
@@ -1605,8 +1913,8 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
         item.jsonPrimitive.content
       } ?: emptyMap(),
       authMode = when (value["authMode"]?.jsonPrimitive?.content) {
-        null, "auth-code-pkce" -> OidcRedirectAuthMode.AuthCodePKCE
-        "auth-code" -> OidcRedirectAuthMode.AuthCode
+        null, "auth-code-pkce" -> OidcAuthMode.AuthCodePKCE
+        "auth-code" -> OidcAuthMode.AuthCode
         else -> error("Unsupported OIDC auth mode")
       }
     ))
@@ -1716,10 +2024,11 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
 
   private fun upstreamErrorMap(error: OMSWalletUpstreamError): WritableMap =
     Arguments.createMap().apply {
-      putString("service", error.service.name.lowercase())
+      putString("service", error.service.wireValue)
       putNullableString("name", error.name)
       putNullableString("code", error.code)
       putNullableString("message", error.message)
+      putNullableString("cause", error.cause)
       error.status?.let { putDouble("status", it.toDouble()) } ?: putNull("status")
     }
 

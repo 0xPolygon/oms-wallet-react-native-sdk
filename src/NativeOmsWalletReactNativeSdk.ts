@@ -21,7 +21,6 @@ export type OmsNativeWalletAccount = {
 };
 
 export type OmsNativeWalletActivationResult = {
-  walletAddress: string;
   wallet: OmsNativeWalletAccount;
 };
 
@@ -29,14 +28,15 @@ export type OmsNativePendingWalletSelection = {
   id: string;
   walletType: string;
   wallets: OmsNativeWalletAccount[];
+  claimableWallets: OmsNativeWalletAccount[];
   credential: OmsNativeWalletCredential;
 };
 
 export type OmsNativeCompleteAuthResult = {
   type: string;
-  walletAddress: string | null;
   wallet?: OmsNativeWalletAccount;
   wallets: OmsNativeWalletAccount[];
+  claimableWallets: OmsNativeWalletAccount[];
   credential: OmsNativeWalletCredential;
   pendingSelection?: OmsNativePendingWalletSelection;
 };
@@ -59,20 +59,42 @@ export type OmsNativeSessionAuth = {
   email: string | null;
 };
 
-export type OmsNativeSessionState = {
-  walletAddress: string | null;
-  expiresAt: string | null;
-  auth: OmsNativeSessionAuth | null;
+export type OmsNativeSession = {
+  expiresAt: string;
+  auth: OmsNativeSessionAuth;
 };
 
-export type OmsNativeSessionExpiredEvent = {
-  clientId: string;
-  session: OmsNativeSessionState;
+export type OmsNativeSessionState = {
+  activeWallet: OmsNativeWalletAccount | null;
+  session: OmsNativeSession | null;
+};
+
+export type OmsNativeExpiredSession = {
+  wallet: OmsNativeWalletAccount | null;
+  session: OmsNativeSession;
   expiredAt: string;
+};
+
+export type OmsNativeSessionChangeEvent = {
+  clientId: string;
+  reason: string;
+  activeWallet: OmsNativeWalletAccount | null;
+  session: OmsNativeSession | null;
+  expiredSession: OmsNativeExpiredSession | null;
+};
+
+export type OmsNativeSortBy = {
+  column: string;
+  order: string;
 };
 
 export type OmsNativeTokenBalancesPage = {
   page: number;
+  column?: string | null;
+  // Arbitrary JSON cursor values, serialized because codegen has no JSON value type.
+  beforeJson?: string | null;
+  afterJson?: string | null;
+  sort?: OmsNativeSortBy[] | null;
   pageSize: number;
   more: boolean;
 };
@@ -366,12 +388,41 @@ export type OmsNativeSolanaBalancesResult = {
   errors: OmsNativeSolanaNetworkError[];
 };
 
+export type OmsNativeTronBalance = {
+  assetType: string;
+  network: string;
+  accountAddress: string;
+  tokenStandard: string | null;
+  contractAddress: string | null;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance: string;
+  formattedBalance: string;
+  imageUrl: string | null;
+  metadataUri: string | null;
+  verificationStatus: string;
+  verificationSource: string;
+  priceUSD: string | null;
+  balanceUSD: string | null;
+};
+
+export type OmsNativeTronNetworkError = {
+  network: string;
+  reason: string;
+};
+
+export type OmsNativeTronBalancesResult = {
+  status: number;
+  balances: OmsNativeTronBalance[];
+  errors: OmsNativeTronNetworkError[];
+};
+
 export interface Spec extends TurboModule {
   readonly onFeeOptionSelectionRequest: CodegenTypes.EventEmitter<OmsNativeFeeOptionSelectionRequest>;
-  readonly onSessionExpired: CodegenTypes.EventEmitter<OmsNativeSessionExpiredEvent>;
+  readonly onSessionChange: CodegenTypes.EventEmitter<OmsNativeSessionChangeEvent>;
 
   createClient(clientId: string, publishableKey: string): Promise<void>;
-  getWalletAddress(clientId: string): Promise<string | null>;
   getSession(clientId: string): Promise<OmsNativeSessionState>;
   startEmailAuth(
     clientId: string,
@@ -416,6 +467,10 @@ export interface Spec extends TurboModule {
     clientId: string,
     walletId: string
   ): Promise<OmsNativeWalletActivationResult>;
+  claimWallet(
+    clientId: string,
+    walletId: string
+  ): Promise<OmsNativeWalletActivationResult>;
   createWallet(
     clientId: string,
     walletType: string | null,
@@ -451,6 +506,11 @@ export interface Spec extends TurboModule {
     pendingSelectionId: string,
     reference: string | null
   ): Promise<OmsNativeWalletActivationResult>;
+  claimAndSelectWalletForPendingSelection(
+    clientId: string,
+    pendingSelectionId: string,
+    walletId: string
+  ): Promise<OmsNativeWalletActivationResult>;
   signOut(clientId: string): Promise<void>;
   signMessage(
     clientId: string,
@@ -458,6 +518,8 @@ export interface Spec extends TurboModule {
     message: string
   ): Promise<string>;
   signSolanaMessage(clientId: string, message: string): Promise<string>;
+  signTronMessage(clientId: string, message: string): Promise<string>;
+  signTronTypedData(clientId: string, typedDataJson: string): Promise<string>;
   signTypedData(
     clientId: string,
     chainId: string,
@@ -505,6 +567,32 @@ export interface Spec extends TurboModule {
     statusPollingFastIntervalMs: string | null,
     statusPollingFastPollCount: string | null
   ): Promise<OmsNativeSendTransactionResponse>;
+  sendTronTransaction(
+    clientId: string,
+    network: string,
+    to: string,
+    value: string | null,
+    data: string | null,
+    feeOptionSelectorId: string | null,
+    waitForStatus: boolean,
+    statusPollingTimeoutMs: string | null,
+    statusPollingIntervalMs: string | null,
+    statusPollingFastIntervalMs: string | null,
+    statusPollingFastPollCount: string | null
+  ): Promise<OmsNativeSendTransactionResponse>;
+  callTronContract(
+    clientId: string,
+    network: string,
+    contractAddress: string,
+    method: string,
+    argsJson: string | null,
+    feeOptionSelectorId: string | null,
+    waitForStatus: boolean,
+    statusPollingTimeoutMs: string | null,
+    statusPollingIntervalMs: string | null,
+    statusPollingFastIntervalMs: string | null,
+    statusPollingFastPollCount: string | null
+  ): Promise<OmsNativeSendTransactionResponse>;
   respondToFeeOptionSelection(
     requestId: string,
     selectionToken: string | null,
@@ -527,20 +615,39 @@ export interface Spec extends TurboModule {
     clientId: string,
     paramsJson: string
   ): Promise<OmsNativeSolanaBalancesResult>;
+  getTronBalances(
+    clientId: string,
+    paramsJson: string
+  ): Promise<OmsNativeTronBalancesResult>;
   verifyMessageSignature(
     clientId: string,
     chainId: string,
+    walletAddress: string | null,
     message: string,
     signature: string
   ): Promise<boolean>;
   verifySolanaMessageSignature(
     clientId: string,
+    walletAddress: string | null,
     message: string,
     signature: string
   ): Promise<boolean>;
   verifyTypedDataSignature(
     clientId: string,
     chainId: string,
+    walletAddress: string | null,
+    typedDataJson: string,
+    signature: string
+  ): Promise<boolean>;
+  verifyTronMessageSignature(
+    clientId: string,
+    walletAddress: string | null,
+    message: string,
+    signature: string
+  ): Promise<boolean>;
+  verifyTronTypedDataSignature(
+    clientId: string,
+    walletAddress: string | null,
     typedDataJson: string,
     signature: string
   ): Promise<boolean>;
