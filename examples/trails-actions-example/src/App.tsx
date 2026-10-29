@@ -47,8 +47,11 @@ import {
   OMSWallet,
   Networks,
   OmsRelayOidcProviders,
-  type OMSWalletSessionExpiredEvent,
-  type OMSWalletSessionState,
+  type OMSWalletExpiredSession,
+  type OMSWalletSession,
+  type OMSWalletSessionAuth,
+  type OMSWalletSessionChangeEvent,
+  type WalletAccount,
   type Network,
   type SendTransactionResponse,
 } from '@polygonlabs/oms-wallet-react-native';
@@ -158,11 +161,31 @@ const SIGNED_OUT_BALANCES: BalanceState = {
   usdcRaw: '0',
   status: 'Sign in to load balances.',
 };
-const SIGNED_OUT_SESSION: OMSWalletSessionState = {
+/** The wallet session as the demo shows it. */
+type DemoSessionState = {
+  walletAddress: string | undefined;
+  expiresAt: string | undefined;
+  auth: OMSWalletSessionAuth | undefined;
+};
+const SIGNED_OUT_SESSION: DemoSessionState = {
   walletAddress: undefined,
   expiresAt: undefined,
   auth: undefined,
 };
+
+function demoSessionState(
+  activeWallet: WalletAccount | undefined,
+  session: OMSWalletSession | undefined
+): DemoSessionState {
+  if (activeWallet == null || session == null) {
+    return SIGNED_OUT_SESSION;
+  }
+  return {
+    walletAddress: activeWallet.address,
+    expiresAt: session.expiresAt,
+    auth: session.auth,
+  };
+}
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
@@ -639,7 +662,7 @@ function requireText(value: string, label: string): string {
 }
 
 function expiredSessionEmail(
-  event: OMSWalletSessionExpiredEvent | null
+  event: OMSWalletExpiredSession | null
 ): string | undefined {
   const email = event == null ? undefined : sessionEmail(event.session)?.trim();
   return email || undefined;
@@ -730,11 +753,13 @@ function formatTokenAmount(
   }
 }
 
-function sessionEmail(session: OMSWalletSessionState): string | undefined {
+function sessionEmail(session: {
+  auth: OMSWalletSessionAuth | undefined;
+}): string | undefined {
   return session.auth?.email;
 }
 
-function formatSessionAuth(session: OMSWalletSessionState): string {
+function formatSessionAuth(session: DemoSessionState): string {
   if (session.auth?.type === 'email') return 'Email';
   if (session.auth?.type === 'oidc') {
     const provider =
@@ -1201,14 +1226,13 @@ export default function App() {
   );
   const [networks, setNetworks] = useState<Network[]>([]);
   const [sdkReady, setSdkReady] = useState(false);
-  const [session, setSession] =
-    useState<OMSWalletSessionState>(SIGNED_OUT_SESSION);
+  const [session, setSession] = useState<DemoSessionState>(SIGNED_OUT_SESSION);
   const [authStage, setAuthStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [authStatus, setAuthStatus] = useState('Waiting for sign-in.');
   const [expiredSessionEvent, setExpiredSessionEvent] =
-    useState<OMSWalletSessionExpiredEvent | null>(null);
+    useState<OMSWalletExpiredSession | null>(null);
   const [swapPolAmount, setSwapPolAmount] = useState(DEFAULT_SWAP_POL_AMOUNT);
   const [depositUsdcAmount, setDepositUsdcAmount] = useState(
     DEFAULT_DEPOSIT_USDC_AMOUNT
@@ -1272,7 +1296,10 @@ export default function App() {
   }, []);
 
   const refreshSession = useCallback(async () => {
-    const nextSession = await omsWallet.wallet.getSession();
+    const nextSession = demoSessionState(
+      await omsWallet.wallet.getActiveWallet(),
+      await omsWallet.wallet.getSession()
+    );
     setSession(nextSession);
     if (nextSession.walletAddress) {
       setExpiredSessionEvent(null);
@@ -1289,7 +1316,7 @@ export default function App() {
   }, []);
 
   const handleSessionExpired = useCallback(
-    (event: OMSWalletSessionExpiredEvent) => {
+    (event: OMSWalletExpiredSession) => {
       const emailHint = expiredSessionEmail(event);
 
       setExpiredSessionEvent(event);
@@ -1307,10 +1334,21 @@ export default function App() {
       setBrowserUrl(null);
       resetActionState();
       appendLog(
-        `Wallet session expired at ${event.expiredAt}: wallet=${event.session.walletAddress ?? 'none'} email=${sessionEmail(event.session) ?? 'none'}`
+        `Wallet session expired at ${event.expiredAt}: wallet=${event.wallet?.address ?? 'none'} email=${sessionEmail(event.session) ?? 'none'}`
       );
     },
     [appendLog, resetActionState]
+  );
+
+  const handleSessionChange = useCallback(
+    (event: OMSWalletSessionChangeEvent) => {
+      if (event.reason === 'expired') {
+        handleSessionExpired(event.expiredSession);
+        return;
+      }
+      setSession(demoSessionState(event.activeWallet, event.session));
+    },
+    [handleSessionExpired]
   );
 
   const runAction = useCallback(
@@ -1363,13 +1401,13 @@ export default function App() {
               setAuthStage('email');
               setAuthStatus('Google redirect login complete');
               appendLog(
-                `Google redirect wallet selected: ${nextSession.walletAddress ?? activation.walletAddress}`
+                `Google redirect wallet selected: ${nextSession.walletAddress ?? activation.wallet.address}`
               );
               break;
             }
             const nextSession = await refreshSession();
             const address =
-              nextSession.walletAddress ?? result.result.walletAddress;
+              nextSession.walletAddress ?? result.result.wallet.address;
             setCode('');
             setAuthStage('email');
             setAuthStatus('Google redirect login complete');
@@ -1666,8 +1704,8 @@ export default function App() {
   useEffect(() => {
     if (!sdkReady) return undefined;
 
-    const sessionExpiredSubscription =
-      omsWallet.wallet.onSessionExpired(handleSessionExpired);
+    const sessionChangeSubscription =
+      omsWallet.wallet.onSessionChange(handleSessionChange);
 
     const handleRedirectUrl = (url: string) => {
       if (!isDemoOidcRedirectUrl(url)) return;
@@ -1698,13 +1736,13 @@ export default function App() {
       });
 
     return () => {
-      sessionExpiredSubscription.remove();
+      sessionChangeSubscription.remove();
       subscription.remove();
     };
   }, [
     appendLog,
     finishOidcRedirectSignIn,
-    handleSessionExpired,
+    handleSessionChange,
     omsWallet.wallet,
     runAction,
     sdkReady,
@@ -2257,8 +2295,7 @@ export default function App() {
                       <SessionDetail
                         label="Wallet"
                         value={
-                          expiredSessionEvent.session.walletAddress ??
-                          'Unavailable'
+                          expiredSessionEvent.wallet?.address ?? 'Unavailable'
                         }
                       />
                       <SessionDetail

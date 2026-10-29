@@ -64,9 +64,9 @@ function walletSelectedResult() {
   const selectedWallet = wallet();
   return {
     type: 'walletSelected',
-    walletAddress: selectedWallet.address,
     wallet: selectedWallet,
     wallets: [selectedWallet],
+    claimableWallets: [],
     credential: credential(),
   };
 }
@@ -75,14 +75,15 @@ function pendingWalletSelectionResult(id = 'pending-1') {
   const pendingWallet = wallet();
   return {
     type: 'walletSelection',
-    walletAddress: null,
     wallet: null,
     wallets: [pendingWallet],
+    claimableWallets: [wallet('claimable-1')],
     credential: credential(),
     pendingSelection: {
       id,
       walletType: 'ethereum',
       wallets: [pendingWallet],
+      claimableWallets: [wallet('claimable-1')],
       credential: credential(),
     },
   };
@@ -91,22 +92,41 @@ function pendingWalletSelectionResult(id = 'pending-1') {
 function walletActivationResult(id = 'wallet-2') {
   const activatedWallet = wallet(id);
   return {
-    walletAddress: activatedWallet.address,
     wallet: activatedWallet,
   };
 }
 
-function sessionExpiredEvent(id = 'expired') {
+// An `expired` change as the native module emits it, and as listeners receive it.
+function expiredChange(id = 'expired') {
+  const session = {
+    expiresAt: '2026-06-10T00:00:00.000Z',
+    auth: {
+      type: 'email',
+      email: `${id}@example.com`,
+    },
+  };
+  const expiredWallet = wallet(`${id}-1`);
   return {
-    session: {
-      walletAddress: `0x${id.replace(/\D/g, '').padStart(40, '1')}`,
-      expiresAt: '2026-06-10T00:00:00.000Z',
-      auth: {
-        type: 'email',
-        email: `${id}@example.com`,
+    native: {
+      reason: 'expired',
+      activeWallet: null,
+      session: null,
+      expiredSession: {
+        wallet: expiredWallet,
+        session,
+        expiredAt: '2026-06-10T00:00:00.000Z',
       },
     },
-    expiredAt: '2026-06-10T00:00:00.000Z',
+    expected: {
+      reason: 'expired',
+      activeWallet: undefined,
+      session: undefined,
+      expiredSession: {
+        wallet: { ...expiredWallet, reference: undefined },
+        session,
+        expiredAt: '2026-06-10T00:00:00.000Z',
+      },
+    },
   };
 }
 
@@ -126,14 +146,14 @@ function loadClient(overrides = {}) {
 
   const calls = {};
   const native = {};
-  native.onSessionExpired = makeRecorder(
+  native.onSessionChange = makeRecorder(
     calls,
-    'onSessionExpired',
+    'onSessionChange',
     (listener) => {
-      native.sessionExpiredListener = listener;
+      native.sessionChangeListener = listener;
       return {
         remove() {
-          native.sessionExpiredListener = null;
+          native.sessionChangeListener = null;
         },
       };
     }
@@ -160,15 +180,9 @@ function loadClient(overrides = {}) {
     'getSession',
     overrides.getSession ??
       (async () => ({
-        walletAddress: null,
-        expiresAt: null,
-        auth: null,
+        activeWallet: null,
+        session: null,
       }))
-  );
-  native.getWalletAddress = makeRecorder(
-    calls,
-    'getWalletAddress',
-    overrides.getWalletAddress ?? (async () => null)
   );
   native.startEmailAuth = makeRecorder(
     calls,
@@ -212,6 +226,11 @@ function loadClient(overrides = {}) {
     'useWallet',
     overrides.useWallet ?? (async () => walletActivationResult())
   );
+  native.claimWallet = makeRecorder(
+    calls,
+    'claimWallet',
+    overrides.claimWallet ?? (async () => walletActivationResult())
+  );
   native.createWallet = makeRecorder(
     calls,
     'createWallet',
@@ -249,6 +268,12 @@ function loadClient(overrides = {}) {
     overrides.createAndSelectWalletForPendingSelection ??
       (async () => walletActivationResult())
   );
+  native.claimAndSelectWalletForPendingSelection = makeRecorder(
+    calls,
+    'claimAndSelectWalletForPendingSelection',
+    overrides.claimAndSelectWalletForPendingSelection ??
+      (async () => walletActivationResult())
+  );
   native.signOut = makeRecorder(
     calls,
     'signOut',
@@ -269,6 +294,32 @@ function loadClient(overrides = {}) {
     calls,
     'signSolanaMessage',
     overrides.signSolanaMessage ?? (async () => 'solana-signature')
+  );
+  native.signTronMessage = makeRecorder(
+    calls,
+    'signTronMessage',
+    overrides.signTronMessage ?? (async () => 'tron-signature')
+  );
+  native.signTronTypedData = makeRecorder(
+    calls,
+    'signTronTypedData',
+    overrides.signTronTypedData ?? (async () => 'tron-typed-signature')
+  );
+  const tronTransaction = async () => ({
+    txnId: 'tron-txn-1',
+    status: 'pending',
+    txnHash: null,
+    statusResolution: 'not-requested',
+  });
+  native.sendTronTransaction = makeRecorder(
+    calls,
+    'sendTronTransaction',
+    overrides.sendTronTransaction ?? tronTransaction
+  );
+  native.callTronContract = makeRecorder(
+    calls,
+    'callTronContract',
+    overrides.callTronContract ?? tronTransaction
   );
   native.sendSolanaTransfer = makeRecorder(
     calls,
@@ -302,6 +353,12 @@ function loadClient(overrides = {}) {
     calls,
     'getSolanaBalances',
     overrides.getSolanaBalances ??
+      (async () => ({ status: 200, balances: [], errors: [] }))
+  );
+  native.getTronBalances = makeRecorder(
+    calls,
+    'getTronBalances',
+    overrides.getTronBalances ??
       (async () => ({ status: 200, balances: [], errors: [] }))
   );
   native.getTransactionStatus = makeRecorder(
@@ -374,6 +431,18 @@ function loadClient(overrides = {}) {
     'verifySolanaMessageSignature',
     overrides.verifySolanaMessageSignature ?? (async () => true)
   );
+  for (const name of [
+    'verifyMessageSignature',
+    'verifyTypedDataSignature',
+    'verifyTronMessageSignature',
+    'verifyTronTypedDataSignature',
+  ]) {
+    native[name] = makeRecorder(
+      calls,
+      name,
+      overrides[name] ?? (async () => true)
+    );
+  }
   native.respondToFeeOptionSelection = makeRecorder(
     calls,
     'respondToFeeOptionSelection',
@@ -401,14 +470,14 @@ function createOms(client) {
   return new client.OMSWallet(config);
 }
 
-function emitSessionExpired(native, clientId, event) {
-  assert.equal(typeof native.sessionExpiredListener, 'function');
-  native.sessionExpiredListener({ clientId, ...event });
+function emitSessionChange(native, clientId, event) {
+  assert.equal(typeof native.sessionChangeListener, 'function');
+  native.sessionChangeListener({ clientId, ...event });
 }
 
 function subscribe(oms) {
   const events = [];
-  const subscription = oms.wallet.onSessionExpired((event) => {
+  const subscription = oms.wallet.onSessionChange((event) => {
     events.push(event);
   });
   return { events, subscription };
@@ -417,8 +486,7 @@ function subscribe(oms) {
 async function expectReplayCleared(action) {
   const { client, native } = loadClient();
   const oms = createOms(client);
-  const staleEvent = sessionExpiredEvent('stale');
-  emitSessionExpired(native, 'oms-wallet', staleEvent);
+  emitSessionChange(native, 'oms-wallet', expiredChange('stale').native);
 
   await action(oms, native);
 
@@ -481,7 +549,7 @@ test('routes wallet import through the native attested-import bridge', async () 
     cipherSuite: 'p256-sha256-aes256gcm',
   });
   await oms.wallet.importEncryptedWallet({
-    type: 'solana',
+    walletType: 'solana',
     keyMaterial: {
       keyId: recipient.keyId,
       cipherSuite: recipient.cipherSuite,
@@ -614,12 +682,12 @@ test('normalizes native operation names to the React Native API spelling', () =>
 test('replaces the single native client without retaining stale subscribers', async () => {
   const { calls, client, native } = loadClient();
   const firstOms = createOms(client);
-  const firstEvent = sessionExpiredEvent('first');
-  const secondEvent = sessionExpiredEvent('second');
+  const firstEvent = expiredChange('first');
+  const secondEvent = expiredChange('second');
 
-  emitSessionExpired(native, 'oms-wallet', firstEvent);
+  emitSessionChange(native, 'oms-wallet', firstEvent.native);
   const firstSubscriber = subscribe(firstOms);
-  assert.deepEqual(firstSubscriber.events, [firstEvent]);
+  assert.deepEqual(firstSubscriber.events, [firstEvent.expected]);
 
   const secondOms = createOms(client);
   const secondSubscriber = subscribe(secondOms);
@@ -629,9 +697,9 @@ test('replaces the single native client without retaining stale subscribers', as
     /This OMSWallet instance has been replaced/
   );
 
-  emitSessionExpired(native, 'oms-wallet', secondEvent);
-  assert.deepEqual(firstSubscriber.events, [firstEvent]);
-  assert.deepEqual(secondSubscriber.events, [secondEvent]);
+  emitSessionChange(native, 'oms-wallet', secondEvent.native);
+  assert.deepEqual(firstSubscriber.events, [firstEvent.expected]);
+  assert.deepEqual(secondSubscriber.events, [secondEvent.expected]);
   assert.deepEqual(calls.createClient, [
     ['oms-wallet', 'test-publishable-key'],
     ['oms-wallet', 'test-publishable-key'],
@@ -671,12 +739,17 @@ test('clears cached session expiry when auth or session state is reset', async (
     })
   );
   await expectReplayCleared((oms) => oms.wallet.useWallet('wallet-1'));
+  await expectReplayCleared((oms) => oms.wallet.claimWallet('wallet-1'));
   await expectReplayCleared((oms) => oms.wallet.createWallet());
   await expectReplayCleared((oms) => oms.wallet.signOut());
 });
 
 test('routes pending wallet selection activation with the owning client id', async () => {
-  for (const selectionAction of ['selectWallet', 'createAndSelectWallet']) {
+  for (const selectionAction of [
+    'selectWallet',
+    'createAndSelectWallet',
+    'claimAndSelectWallet',
+  ]) {
     const { calls, client, native } = loadClient({
       completeEmailAuth: async () => pendingWalletSelectionResult(),
     });
@@ -687,11 +760,15 @@ test('routes pending wallet selection activation with the owning client id', asy
       walletSelection: 'manual',
     });
     assert.equal('id' in result.pendingSelection, false);
-    assert.equal(result.walletAddress, undefined);
     assert.equal(result.wallet, undefined);
     assert.equal(result.wallets[0].reference, undefined);
-    const staleEvent = sessionExpiredEvent(selectionAction);
-    emitSessionExpired(native, 'oms-wallet', staleEvent);
+    assert.equal(result.claimableWallets[0].id, 'claimable-1');
+    assert.equal(result.pendingSelection.claimableWallets[0].id, 'claimable-1');
+    emitSessionChange(
+      native,
+      'oms-wallet',
+      expiredChange(selectionAction).native
+    );
 
     if (selectionAction === 'selectWallet') {
       await result.pendingSelection.selectWallet('wallet-1');
@@ -700,12 +777,19 @@ test('routes pending wallet selection activation with the owning client id', asy
         'pending-1',
         'wallet-1',
       ]);
-    } else {
+    } else if (selectionAction === 'createAndSelectWallet') {
       await result.pendingSelection.createAndSelectWallet('reference');
       assert.deepEqual(calls.createAndSelectWalletForPendingSelection[0], [
         'oms-wallet',
         'pending-1',
         'reference',
+      ]);
+    } else {
+      await result.pendingSelection.claimAndSelectWallet('claimable-1');
+      assert.deepEqual(calls.claimAndSelectWalletForPendingSelection[0], [
+        'oms-wallet',
+        'pending-1',
+        'claimable-1',
       ]);
     }
 
@@ -720,8 +804,8 @@ test('does not clear cached session expiry for ignored OIDC redirect callbacks',
       handleOidcRedirectCallback: async () => ({ type }),
     });
     const oms = createOms(client);
-    const staleEvent = sessionExpiredEvent(type);
-    emitSessionExpired(native, 'oms-wallet', staleEvent);
+    const staleEvent = expiredChange(type);
+    emitSessionChange(native, 'oms-wallet', staleEvent.native);
 
     assert.deepEqual(
       await oms.wallet.handleOidcRedirectCallback({
@@ -731,7 +815,7 @@ test('does not clear cached session expiry for ignored OIDC redirect callbacks',
     );
 
     const { events } = subscribe(oms);
-    assert.deepEqual(events, [staleEvent]);
+    assert.deepEqual(events, [staleEvent.expected]);
   }
 });
 
@@ -969,6 +1053,209 @@ test('routes Solana signing, transfers, verification, and balances', async () =>
   ]);
 });
 
+test('hydrates session changes and replays only the latest expiry', async () => {
+  const { client, native } = loadClient();
+  const oms = createOms(client);
+  const { events, subscription } = subscribe(oms);
+  const activeWallet = { ...wallet(), type: 'tron', address: 'TWallet' };
+  const session = {
+    expiresAt: '2026-06-17T00:00:00.000Z',
+    auth: { type: 'email', email: 'user@example.com' },
+  };
+
+  emitSessionChange(native, 'oms-wallet', {
+    reason: 'signedIn',
+    activeWallet,
+    session,
+    expiredSession: null,
+  });
+  const expired = expiredChange('later');
+  emitSessionChange(native, 'oms-wallet', expired.native);
+  emitSessionChange(native, 'oms-wallet', {
+    reason: 'signedOut',
+    activeWallet: null,
+    session: null,
+    expiredSession: null,
+  });
+
+  assert.deepEqual(events, [
+    {
+      reason: 'signedIn',
+      activeWallet: { ...activeWallet, reference: undefined },
+      session,
+    },
+    expired.expected,
+    { reason: 'signedOut', activeWallet: undefined, session: undefined },
+  ]);
+  // A sign-out after the expiry means a new listener has nothing to replay.
+  assert.deepEqual(subscribe(oms).events, []);
+  subscription.remove();
+});
+
+test('passes an explicit or omitted verification address to native', async () => {
+  const { calls, client } = loadClient();
+  const oms = createOms(client);
+  const { Networks } = require(networksModulePath);
+
+  await oms.wallet.isValidMessageSignature({
+    network: Networks.polygon,
+    walletAddress: '0x1111111111111111111111111111111111111111',
+    message: 'hello',
+    signature: '0xsig',
+  });
+  await oms.wallet.isValidTypedDataSignature({
+    network: Networks.polygon,
+    typedData: { primaryType: 'Mail' },
+    signature: '0xsig',
+  });
+  await oms.wallet.isValidSolanaMessageSignature({
+    walletAddress: 'solana-account',
+    message: 'hello',
+    signature: 'sig',
+  });
+
+  assert.deepEqual(calls.verifyMessageSignature[0], [
+    'oms-wallet',
+    '137',
+    '0x1111111111111111111111111111111111111111',
+    'hello',
+    '0xsig',
+  ]);
+  assert.deepEqual(calls.verifyTypedDataSignature[0], [
+    'oms-wallet',
+    '137',
+    null,
+    JSON.stringify({ primaryType: 'Mail' }),
+    '0xsig',
+  ]);
+  assert.deepEqual(calls.verifySolanaMessageSignature[0], [
+    'oms-wallet',
+    'solana-account',
+    'hello',
+    'sig',
+  ]);
+});
+
+test('routes Tron signing, transactions, verification, and balances', async () => {
+  const tokenBalance = {
+    assetType: 'fungible-token',
+    network: 'tron:nile',
+    accountAddress: 'TWallet',
+    tokenStandard: 'trc20',
+    contractAddress: 'TToken',
+    name: 'Tether',
+    symbol: 'USDT',
+    decimals: 6,
+    balance: '1000000',
+    formattedBalance: '1',
+    imageUrl: null,
+    metadataUri: null,
+    verificationStatus: 'verified',
+    verificationSource: 'tronscan',
+    priceUSD: null,
+    balanceUSD: null,
+  };
+  const { calls, client } = loadClient({
+    getTronBalances: async () => ({
+      status: 200,
+      balances: [tokenBalance],
+      errors: [{ network: 'tron:mainnet', reason: 'unavailable' }],
+    }),
+  });
+  const oms = createOms(client);
+
+  assert.equal(
+    await oms.wallet.signTronMessage({ message: 'hello' }),
+    'tron-signature'
+  );
+  assert.equal(
+    await oms.wallet.signTronTypedData({ typedData: { primaryType: 'Mail' } }),
+    'tron-typed-signature'
+  );
+  await oms.wallet.isValidTronMessageSignature({
+    message: 'hello',
+    signature: 'sig',
+  });
+  await oms.wallet.isValidTronTypedDataSignature({
+    walletAddress: 'TWallet',
+    typedData: { primaryType: 'Mail' },
+    signature: 'sig',
+  });
+  await oms.wallet.sendTronTransaction({
+    network: 'tron:nile',
+    to: 'TRecipient',
+    value: '1000000',
+    waitForStatus: false,
+  });
+  await oms.wallet.callTronContract({
+    network: 'tron:nile',
+    contractAddress: 'TToken',
+    method: 'transfer',
+    args: [{ type: 'address', value: 'TRecipient' }],
+  });
+  const balances = await oms.indexer.getTronBalances({
+    walletAddress: 'TWallet',
+    networks: ['tron:nile'],
+  });
+
+  assert.deepEqual(calls.signTronTypedData[0], [
+    'oms-wallet',
+    JSON.stringify({ primaryType: 'Mail' }),
+  ]);
+  assert.deepEqual(calls.verifyTronMessageSignature[0], [
+    'oms-wallet',
+    null,
+    'hello',
+    'sig',
+  ]);
+  assert.deepEqual(calls.verifyTronTypedDataSignature[0], [
+    'oms-wallet',
+    'TWallet',
+    JSON.stringify({ primaryType: 'Mail' }),
+    'sig',
+  ]);
+  assert.deepEqual(calls.sendTronTransaction[0], [
+    'oms-wallet',
+    'tron:nile',
+    'TRecipient',
+    '1000000',
+    null,
+    null,
+    false,
+    null,
+    null,
+    null,
+    null,
+  ]);
+  assert.deepEqual(calls.callTronContract[0], [
+    'oms-wallet',
+    'tron:nile',
+    'TToken',
+    'transfer',
+    JSON.stringify([{ type: 'address', value: 'TRecipient' }]),
+    null,
+    true,
+    null,
+    null,
+    null,
+    null,
+  ]);
+  assert.deepEqual(JSON.parse(calls.getTronBalances[0][1]), {
+    walletAddress: 'TWallet',
+    networks: ['tron:nile'],
+  });
+  assert.deepEqual(balances.balances[0], {
+    ...tokenBalance,
+    imageUrl: undefined,
+    metadataUri: undefined,
+    priceUSD: undefined,
+    balanceUSD: undefined,
+  });
+  assert.deepEqual(balances.errors, [
+    { network: 'tron:mainnet', reason: 'unavailable' },
+  ]);
+});
+
 test('hydrates direct and remote access grants and routes smart-session calls', async () => {
   const remoteGrant = {
     type: 'remote',
@@ -1143,15 +1430,17 @@ test('normalizes optional native nulls at public model boundaries', async () => 
   };
   const { client } = loadClient({
     getSession: async () => ({
-      walletAddress: null,
-      expiresAt: null,
-      auth: {
-        type: 'oidc',
-        flow: 'id-token',
-        issuer: 'https://issuer.example.com',
-        provider: null,
-        providerLabel: null,
-        email: null,
+      activeWallet: wallet(),
+      session: {
+        expiresAt: '2026-06-17T00:00:00.000Z',
+        auth: {
+          type: 'oidc',
+          flow: 'id-token',
+          issuer: 'https://issuer.example.com',
+          provider: null,
+          providerLabel: null,
+          email: null,
+        },
       },
     }),
     getBalances: async () => ({
@@ -1179,10 +1468,12 @@ test('normalizes optional native nulls at public model boundaries', async () => 
   const oms = createOms(client);
   const { Networks } = require(networksModulePath);
 
-  assert.equal(await oms.wallet.getWalletAddress(), undefined);
+  assert.deepEqual(await oms.wallet.getActiveWallet(), {
+    ...wallet(),
+    reference: undefined,
+  });
   assert.deepEqual(await oms.wallet.getSession(), {
-    walletAddress: undefined,
-    expiresAt: undefined,
+    expiresAt: '2026-06-17T00:00:00.000Z',
     auth: {
       type: 'oidc',
       flow: 'id-token',

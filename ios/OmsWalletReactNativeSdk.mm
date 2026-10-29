@@ -23,10 +23,10 @@
         [strongSelf emitOnFeeOptionSelectionRequest:payload];
       }
     }];
-    [_impl setSessionExpiredEventEmitter:^(NSDictionary *payload) {
+    [_impl setSessionChangeEventEmitter:^(NSDictionary *payload) {
       OmsWalletReactNativeSdk *strongSelf = weakSelf;
       if (strongSelf) {
-        [strongSelf emitOnSessionExpired:payload];
+        [strongSelf emitOnSessionChange:payload];
       }
     }];
   }
@@ -42,13 +42,6 @@
                     publishableKey:publishableKey
                            resolve:resolve
                             reject:reject];
-}
-
-- (void)getWalletAddress:(NSString *)clientId
-                 resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject
-{
-  [_impl getWalletAddressWithClientId:clientId resolve:resolve reject:reject];
 }
 
 - (void)getSession:(NSString *)clientId
@@ -164,6 +157,14 @@ sessionLifetimeSeconds:(nullable NSString *)sessionLifetimeSeconds
   [_impl useWalletWithClientId:clientId walletId:walletId resolve:resolve reject:reject];
 }
 
+- (void)claimWallet:(NSString *)clientId
+           walletId:(NSString *)walletId
+            resolve:(RCTPromiseResolveBlock)resolve
+             reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl claimWalletWithClientId:clientId walletId:walletId resolve:resolve reject:reject];
+}
+
 - (void)createWallet:(NSString *)clientId
           walletType:(nullable NSString *)walletType
            reference:(nullable NSString *)reference
@@ -252,6 +253,19 @@ sessionLifetimeSeconds:(nullable NSString *)sessionLifetimeSeconds
                                                        reject:reject];
 }
 
+- (void)claimAndSelectWalletForPendingSelection:(NSString *)clientId
+                             pendingSelectionId:(NSString *)pendingSelectionId
+                                       walletId:(NSString *)walletId
+                                        resolve:(RCTPromiseResolveBlock)resolve
+                                         reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl claimAndSelectWalletForPendingSelectionWithClientId:clientId
+                                          pendingSelectionId:pendingSelectionId
+                                                    walletId:walletId
+                                                     resolve:resolve
+                                                      reject:reject];
+}
+
 - (void)signOut:(NSString *)clientId
         resolve:(RCTPromiseResolveBlock)resolve
          reject:(RCTPromiseRejectBlock)reject
@@ -279,6 +293,25 @@ sessionLifetimeSeconds:(nullable NSString *)sessionLifetimeSeconds
 {
   [_impl signSolanaMessageWithClientId:clientId
                                message:message
+                               resolve:resolve
+                                reject:reject];
+}
+
+- (void)signTronMessage:(NSString *)clientId
+                message:(NSString *)message
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl signTronMessageWithClientId:clientId message:message resolve:resolve reject:reject];
+}
+
+- (void)signTronTypedData:(NSString *)clientId
+            typedDataJson:(NSString *)typedDataJson
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl signTronTypedDataWithClientId:clientId
+                         typedDataJson:typedDataJson
                                resolve:resolve
                                 reject:reject];
 }
@@ -389,6 +422,64 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                                  reject:reject];
 }
 
+- (void)sendTronTransaction:(NSString *)clientId
+                     network:(NSString *)network
+                          to:(NSString *)to
+                       value:(nullable NSString *)value
+                        data:(nullable NSString *)data
+         feeOptionSelectorId:(nullable NSString *)feeOptionSelectorId
+               waitForStatus:(BOOL)waitForStatus
+      statusPollingTimeoutMs:(nullable NSString *)statusPollingTimeoutMs
+     statusPollingIntervalMs:(nullable NSString *)statusPollingIntervalMs
+ statusPollingFastIntervalMs:(nullable NSString *)statusPollingFastIntervalMs
+  statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
+                     resolve:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl sendTronTransactionWithClientId:clientId
+                                 network:network
+                                      to:to
+                                   value:value
+                                    data:data
+                     feeOptionSelectorId:feeOptionSelectorId
+                           waitForStatus:waitForStatus
+                  statusPollingTimeoutMs:statusPollingTimeoutMs
+                 statusPollingIntervalMs:statusPollingIntervalMs
+             statusPollingFastIntervalMs:statusPollingFastIntervalMs
+              statusPollingFastPollCount:statusPollingFastPollCount
+                                 resolve:resolve
+                                  reject:reject];
+}
+
+- (void)callTronContract:(NSString *)clientId
+                 network:(NSString *)network
+         contractAddress:(NSString *)contractAddress
+                  method:(NSString *)method
+                argsJson:(nullable NSString *)argsJson
+     feeOptionSelectorId:(nullable NSString *)feeOptionSelectorId
+           waitForStatus:(BOOL)waitForStatus
+  statusPollingTimeoutMs:(nullable NSString *)statusPollingTimeoutMs
+ statusPollingIntervalMs:(nullable NSString *)statusPollingIntervalMs
+statusPollingFastIntervalMs:(nullable NSString *)statusPollingFastIntervalMs
+statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
+                 resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl callTronContractWithClientId:clientId
+                              network:network
+                      contractAddress:contractAddress
+                               method:method
+                             argsJson:argsJson
+                  feeOptionSelectorId:feeOptionSelectorId
+                        waitForStatus:waitForStatus
+               statusPollingTimeoutMs:statusPollingTimeoutMs
+              statusPollingIntervalMs:statusPollingIntervalMs
+          statusPollingFastIntervalMs:statusPollingFastIntervalMs
+           statusPollingFastPollCount:statusPollingFastPollCount
+                              resolve:resolve
+                               reject:reject];
+}
+
 - (void)respondToFeeOptionSelection:(NSString *)requestId
                      selectionToken:(nullable NSString *)selectionToken
                      selectionIndex:(nullable NSString *)selectionIndex
@@ -442,8 +533,20 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
                                 reject:reject];
 }
 
+- (void)getTronBalances:(NSString *)clientId
+             paramsJson:(NSString *)paramsJson
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl getTronBalancesWithClientId:clientId
+                          paramsJson:paramsJson
+                             resolve:resolve
+                              reject:reject];
+}
+
 - (void)verifyMessageSignature:(NSString *)clientId
                        chainId:(NSString *)chainId
+                 walletAddress:(nullable NSString *)walletAddress
                        message:(NSString *)message
                      signature:(NSString *)signature
                        resolve:(RCTPromiseResolveBlock)resolve
@@ -451,6 +554,7 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
 {
   [_impl verifyMessageSignatureWithClientId:clientId
                                     chainId:chainId
+                              walletAddress:walletAddress
                                     message:message
                                   signature:signature
                                     resolve:resolve
@@ -458,12 +562,14 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
 }
 
 - (void)verifySolanaMessageSignature:(NSString *)clientId
+                         walletAddress:(nullable NSString *)walletAddress
                                message:(NSString *)message
                              signature:(NSString *)signature
                                resolve:(RCTPromiseResolveBlock)resolve
                                 reject:(RCTPromiseRejectBlock)reject
 {
   [_impl verifySolanaMessageSignatureWithClientId:clientId
+                                     walletAddress:walletAddress
                                            message:message
                                          signature:signature
                                            resolve:resolve
@@ -472,6 +578,7 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
 
 - (void)verifyTypedDataSignature:(NSString *)clientId
                          chainId:(NSString *)chainId
+                   walletAddress:(nullable NSString *)walletAddress
                     typedDataJson:(NSString *)typedDataJson
                         signature:(NSString *)signature
                           resolve:(RCTPromiseResolveBlock)resolve
@@ -479,10 +586,41 @@ statusPollingFastPollCount:(nullable NSString *)statusPollingFastPollCount
 {
   [_impl verifyTypedDataSignatureWithClientId:clientId
                                       chainId:chainId
+                                walletAddress:walletAddress
                                 typedDataJson:typedDataJson
                                     signature:signature
                                       resolve:resolve
                                        reject:reject];
+}
+
+- (void)verifyTronMessageSignature:(NSString *)clientId
+                     walletAddress:(nullable NSString *)walletAddress
+                           message:(NSString *)message
+                         signature:(NSString *)signature
+                           resolve:(RCTPromiseResolveBlock)resolve
+                            reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl verifyTronMessageSignatureWithClientId:clientId
+                                  walletAddress:walletAddress
+                                        message:message
+                                      signature:signature
+                                        resolve:resolve
+                                         reject:reject];
+}
+
+- (void)verifyTronTypedDataSignature:(NSString *)clientId
+                       walletAddress:(nullable NSString *)walletAddress
+                       typedDataJson:(NSString *)typedDataJson
+                           signature:(NSString *)signature
+                             resolve:(RCTPromiseResolveBlock)resolve
+                              reject:(RCTPromiseRejectBlock)reject
+{
+  [_impl verifyTronTypedDataSignatureWithClientId:clientId
+                                    walletAddress:walletAddress
+                                    typedDataJson:typedDataJson
+                                        signature:signature
+                                          resolve:resolve
+                                           reject:reject];
 }
 
 - (void)getIdToken:(NSString *)clientId

@@ -16,9 +16,17 @@ import type {
   ListAccessPageParams,
   ListAccessParams,
   BalancesResult,
+  CallTronContractParams,
+  GetTronBalancesParams,
+  IsValidTronMessageSignatureParams,
+  IsValidTronTypedDataSignatureParams,
   OMSWalletParams,
-  OMSWalletSessionExpiredEvent,
-  OMSWalletSessionState,
+  OMSWalletSession,
+  OMSWalletSessionChangeEvent,
+  SendTronTransactionParams,
+  SignTronMessageParams,
+  SignTronTypedDataParams,
+  TronBalancesResult,
   CompleteAuthResult,
   ImportEncryptedWalletParams,
   ImportWalletParams,
@@ -66,16 +74,16 @@ export class OMSWallet {
 }
 
 export class OMSWalletClient {
-  getWalletAddress(): Promise<string | undefined> {
+  getActiveWallet(): Promise<WalletAccount | undefined> {
     unsupported();
   }
 
-  getSession(): Promise<OMSWalletSessionState> {
+  getSession(): Promise<OMSWalletSession | undefined> {
     unsupported();
   }
 
-  onSessionExpired(
-    _listener: (event: OMSWalletSessionExpiredEvent) => void
+  onSessionChange(
+    _listener: (event: OMSWalletSessionChangeEvent) => void
   ): EventSubscription {
     unsupported();
   }
@@ -113,6 +121,10 @@ export class OMSWalletClient {
   }
 
   useWallet(_walletId: string): Promise<WalletActivationResult> {
+    unsupported();
+  }
+
+  claimWallet(_walletId: string): Promise<WalletActivationResult> {
     unsupported();
   }
 
@@ -154,6 +166,14 @@ export class OMSWalletClient {
     unsupported();
   }
 
+  signTronMessage(_params: SignTronMessageParams): Promise<string> {
+    unsupported();
+  }
+
+  signTronTypedData(_params: SignTronTypedDataParams): Promise<string> {
+    unsupported();
+  }
+
   sendTransaction(
     _params: SendTransactionParams
   ): Promise<SendTransactionResponse> {
@@ -166,6 +186,18 @@ export class OMSWalletClient {
 
   sendSolanaTransfer(
     _params: SendSolanaTransferParams
+  ): Promise<SendTransactionResponse> {
+    unsupported();
+  }
+
+  sendTronTransaction(
+    _params: SendTronTransactionParams
+  ): Promise<SendTransactionResponse> {
+    unsupported();
+  }
+
+  callTronContract(
+    _params: CallTronContractParams
   ): Promise<SendTransactionResponse> {
     unsupported();
   }
@@ -188,6 +220,18 @@ export class OMSWalletClient {
 
   isValidTypedDataSignature(
     _params: IsValidTypedDataSignatureParams
+  ): Promise<boolean> {
+    unsupported();
+  }
+
+  isValidTronMessageSignature(
+    _params: IsValidTronMessageSignatureParams
+  ): Promise<boolean> {
+    unsupported();
+  }
+
+  isValidTronTypedDataSignature(
+    _params: IsValidTronTypedDataSignatureParams
   ): Promise<boolean> {
     unsupported();
   }
@@ -254,6 +298,10 @@ export class OMSIndexerClient {
   getSolanaBalances(
     _params: GetSolanaBalancesParams
   ): Promise<SolanaBalancesResult> {
+    unsupported();
+  }
+
+  getTronBalances(_params: GetTronBalancesParams): Promise<TronBalancesResult> {
     unsupported();
   }
 }

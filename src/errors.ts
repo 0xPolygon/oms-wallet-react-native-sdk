@@ -12,7 +12,8 @@ export type OMSWalletErrorCode =
   | 'OMS_TRANSACTION_STATUS_LOOKUP_FAILED'
   | 'OMS_VALIDATION_ERROR'
   | 'OMS_STORAGE_ERROR'
-  | 'OMS_ATTESTATION_VERIFICATION_FAILED';
+  | 'OMS_ATTESTATION_VERIFICATION_FAILED'
+  | 'OMS_WALLET_ADDRESS_ALREADY_IMPORTED';
 
 export type OMSWalletUpstreamError = {
   service: 'waas' | 'indexer';
@@ -45,6 +46,7 @@ const errorCodes = new Set<OMSWalletErrorCode>([
   'OMS_VALIDATION_ERROR',
   'OMS_STORAGE_ERROR',
   'OMS_ATTESTATION_VERIFICATION_FAILED',
+  'OMS_WALLET_ADDRESS_ALREADY_IMPORTED',
 ]);
 
 const nativeOperationAliases: Readonly<Record<string, string>> = {

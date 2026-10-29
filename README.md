@@ -64,17 +64,33 @@ Constructing another `OMSWallet` replaces the native client. Calls on the earlie
 ```ts
 await omsWallet.wallet.startEmailAuth({
   email: 'player@example.com',
-  sessionLifetimeSeconds: 604800,
 });
 
-const { walletAddress } = await omsWallet.wallet.completeEmailAuth({
+const { wallet } = await omsWallet.wallet.completeEmailAuth({
   code: '<otp-code>',
 });
 
-console.log(walletAddress);
+console.log(wallet?.address);
 ```
 
-Automatic wallet selection is the default. Handle `walletSelection` only when an authentication call requests manual selection.
+Automatic wallet selection is the default. Handle `walletSelection` only when an authentication call requests manual selection. When the user owns no wallet of the requested type but has a claimable one, automatic selection claims it.
+
+## Keep Your UI In Sync
+
+Subscribe to session changes, then read the current state:
+
+```ts
+const subscription = omsWallet.wallet.onSessionChange((event) => {
+  if (event.reason === 'expired') {
+    showSignIn(event.expiredSession.session.auth);
+  }
+});
+
+const activeWallet = await omsWallet.wallet.getActiveWallet();
+const session = await omsWallet.wallet.getSession();
+```
+
+`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change. `session.expiresAt` moves as the wallet API extends the session with use, up to the lifetime requested at sign-in.
 
 ## Authenticate With An OIDC ID Token
 
@@ -161,6 +177,34 @@ await omsWallet.wallet.sendSolanaTransfer({
 
 `amount` uses the asset's smallest unit. `importWallet` accepts an Ethereum private key as 32 raw bytes or 64 hexadecimal digits, optionally prefixed with `0x`. Solana imports accept a 32-byte seed or 64-byte keypair as raw bytes, or the base58 encoding of either. The native SDK encrypts the key locally for the attested wallet-import transport.
 
+## Tron Wallets
+
+Create or import Tron wallets, sign messages and TIP-712 typed data, and send TRX or call TRC-20 contracts:
+
+```ts
+import { TronNetworks } from '@polygonlabs/oms-wallet-react-native';
+
+await omsWallet.wallet.createWallet({ walletType: 'tron' });
+
+await omsWallet.wallet.sendTronTransaction({
+  network: TronNetworks.nile,
+  to: '<tron-address>',
+  value: '1000000',
+});
+
+await omsWallet.wallet.callTronContract({
+  network: TronNetworks.nile,
+  contractAddress: '<trc20-contract-address>',
+  method: 'transfer',
+  args: [
+    { type: 'address', value: '<tron-address>' },
+    { type: 'uint256', value: '1000000' },
+  ],
+});
+```
+
+Tron addresses use Base58Check (`T…`), and `value` is in sun (1 TRX = 1,000,000 sun). Tron transactions always run in native mode.
+
 ## Remote Access
 
 Inspect a remote credential before approval, authorize bounded smart-session grants, inspect their usage, and revoke direct or remote access through the methods on `omsWallet.wallet`. See the [Public TypeScript API](./API.md) for the exact grant and response types.
@@ -168,10 +212,10 @@ Inspect a remote credential before approval, authorize bounded smart-session gra
 ## Query The Indexer
 
 ```ts
-const walletAddress = await omsWallet.wallet.getWalletAddress();
+const activeWallet = await omsWallet.wallet.getActiveWallet();
 
 const balances = await omsWallet.indexer.getBalances({
-  walletAddress: walletAddress!,
+  walletAddress: activeWallet!.address,
   networks: [Networks.polygon],
   includeMetadata: true,
 });
@@ -180,13 +224,18 @@ const solanaBalances = await omsWallet.indexer.getSolanaBalances({
   walletAddress: '<solana-address>',
   networks: [SolanaNetworks.devnet],
 });
+
+const tronBalances = await omsWallet.indexer.getTronBalances({
+  walletAddress: '<tron-address>',
+  networks: [TronNetworks.nile],
+});
 ```
 
 ## Documentation
 
 - [React Native SDK guide](https://docs.polygon.technology/wallets/sdk/react-native/quickstart)
 - [Public TypeScript API](./API.md)
-- [Migrate from 0.2.0 to 0.3.1](./MIGRATION.md)
+- [Migration guide](./MIGRATION.md)
 
 ## Examples
 
