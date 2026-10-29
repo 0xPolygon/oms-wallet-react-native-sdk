@@ -22,7 +22,7 @@ import type {
   IsValidTronTypedDataSignatureParams,
   OMSWalletParams,
   OMSWalletSession,
-  OMSWalletSessionChangeEvent,
+  OMSWalletSessionChangeListener,
   SendTronTransactionParams,
   SignTronMessageParams,
   SignTronTypedDataParams,
@@ -83,7 +83,7 @@ export class OMSWalletClient {
   }
 
   onSessionChange(
-    _listener: (event: OMSWalletSessionChangeEvent) => void
+    _listener: OMSWalletSessionChangeListener
   ): EventSubscription {
     unsupported();
   }

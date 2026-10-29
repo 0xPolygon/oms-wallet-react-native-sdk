@@ -1,8 +1,9 @@
 import type { EventSubscription } from 'react-native';
 import type { Network, TronNetwork } from './networks';
 import NativeOmsWalletReactNativeSdk from './NativeOmsWalletReactNativeSdk';
-import { normalizeNativeError } from './errors';
+import { OMSWalletError, normalizeNativeError } from './errors';
 import { isOmsRelayOidcProvider } from './oidcProviders';
+import { MAX_SESSION_LIFETIME_SECONDS } from './sessionLifetime';
 import type {
   OmsNativeFeeOptionSelectionRequest,
   OmsNativeCompleteAuthResult,
@@ -54,6 +55,7 @@ import type {
   OMSWalletParams,
   OMSWalletSession,
   OMSWalletSessionChangeEvent,
+  OMSWalletSessionChangeListener,
   SendTronTransactionParams,
   SignTronMessageParams,
   SignTronTypedDataParams,
@@ -102,6 +104,7 @@ import type {
   SolanaBalance,
   SolanaBalancesResult,
   SolanaFungibleTokenBalance,
+  SortBy,
   WalletImportCipherSuite,
   WalletImportRecipientKey,
 } from './types';
@@ -152,6 +155,31 @@ function stringifyOptionalJson(value: unknown | undefined): string | null {
 
 function stringifyOptionalNumber(value: number | undefined): string | null {
   return value == null ? null : String(value);
+}
+
+/**
+ * Checks `sessionLifetimeSeconds` here, so an invalid value fails the same way on iOS and Android,
+ * and returns it as the string the native module takes.
+ */
+function serializeSessionLifetimeSeconds(
+  value: number | undefined,
+  operation: string
+): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > MAX_SESSION_LIFETIME_SECONDS
+  ) {
+    throw new OMSWalletError(
+      'OMS_VALIDATION_ERROR',
+      `sessionLifetimeSeconds must be an integer between 1 and ${MAX_SESSION_LIFETIME_SECONDS}`,
+      { operation, retryable: false }
+    );
+  }
+  return String(value);
 }
 
 function serializePrivateKey(privateKey: string | Uint8Array): {
@@ -262,7 +290,7 @@ let sessionChangeSubscription: EventSubscription | null = null;
 const latestExpiredChanges = new Map<string, OMSWalletSessionChangeEvent>();
 const sessionChangeListeners = new Map<
   string,
-  Set<(event: OMSWalletSessionChangeEvent) => void>
+  Set<OMSWalletSessionChangeListener>
 >();
 const activateNativeWallet = OmsWalletReactNativeSdk.useWallet.bind(
   OmsWalletReactNativeSdk
@@ -276,7 +304,13 @@ function ensureFeeOptionSelectionListener() {
 }
 
 function handleNativeSessionChange(event: OmsNativeSessionChangeEvent) {
-  const change = hydrateSessionChangeEvent(event);
+  let change: OMSWalletSessionChangeEvent;
+  try {
+    change = hydrateSessionChangeEvent(event);
+  } catch (error) {
+    console.error('Ignoring an unreadable session change from native', error);
+    return;
+  }
   if (change.reason === 'expired') {
     latestExpiredChanges.set(event.clientId, change);
   } else {
@@ -287,7 +321,19 @@ function handleNativeSessionChange(event: OmsNativeSessionChangeEvent) {
     return;
   }
   for (const listener of Array.from(listeners)) {
+    notifySessionChangeListener(listener, change);
+  }
+}
+
+// A listener that throws must not keep the others from hearing about the change.
+function notifySessionChangeListener(
+  listener: OMSWalletSessionChangeListener,
+  change: OMSWalletSessionChangeEvent
+) {
+  try {
     listener(change);
+  } catch (error) {
+    console.error('Session change listener threw', error);
   }
 }
 
@@ -358,9 +404,23 @@ function hydrateTokenBalancesPage(
 ): TokenBalancesPage {
   return {
     page: page.page,
+    column: optionalNativeField(page.column),
+    before: page.beforeJson == null ? undefined : JSON.parse(page.beforeJson),
+    after: page.afterJson == null ? undefined : JSON.parse(page.afterJson),
+    sort: page.sort?.map((sortBy) => ({
+      column: sortBy.column,
+      order: hydrateSortOrder(sortBy.order),
+    })),
     pageSize: page.pageSize,
     more: page.more,
   };
+}
+
+function hydrateSortOrder(value: string): SortBy['order'] {
+  if (value !== 'DESC' && value !== 'ASC') {
+    throw new Error(`Unsupported sort order from native SDK: ${value}`);
+  }
+  return value;
 }
 
 function hydrateTokenContractInfo(
@@ -1151,9 +1211,7 @@ export class OMSWalletClient {
    * last `expired` change, if a session expired since the last sign-in or
    * sign-out.
    */
-  onSessionChange(
-    listener: (event: OMSWalletSessionChangeEvent) => void
-  ): EventSubscription {
+  onSessionChange(listener: OMSWalletSessionChangeListener): EventSubscription {
     ensureSessionChangeListener();
     const clientId = nativeClientId(this.owner);
     let listeners = sessionChangeListeners.get(clientId);
@@ -1165,13 +1223,17 @@ export class OMSWalletClient {
 
     const latestExpiredChange = latestExpiredChanges.get(clientId);
     if (latestExpiredChange != null) {
-      listener(latestExpiredChange);
+      notifySessionChangeListener(listener, latestExpiredChange);
     }
 
     return {
       remove: () => {
         listeners.delete(listener);
-        if (listeners.size === 0) {
+        // A newer OMSWallet may own this client id's entry by now; leave it alone.
+        if (
+          listeners.size === 0 &&
+          sessionChangeListeners.get(clientId) === listeners
+        ) {
           sessionChangeListeners.delete(clientId);
         }
       },
@@ -1184,7 +1246,10 @@ export class OMSWalletClient {
     return OmsWalletReactNativeSdk.startEmailAuth(
       nativeClientId(this.owner),
       params.email,
-      stringifyOptionalNumber(params.sessionLifetimeSeconds)
+      serializeSessionLifetimeSeconds(
+        params.sessionLifetimeSeconds,
+        'wallet.startEmailAuth'
+      )
     );
   }
 
@@ -1219,7 +1284,10 @@ export class OMSWalletClient {
         params.audience,
         params.walletSelection ?? null,
         params.walletType ?? null,
-        stringifyOptionalNumber(params.sessionLifetimeSeconds),
+        serializeSessionLifetimeSeconds(
+          params.sessionLifetimeSeconds,
+          'wallet.signInWithOidcIdToken'
+        ),
         params.provider ?? null,
         params.providerLabel ?? null
       )
@@ -1237,7 +1305,10 @@ export class OMSWalletClient {
       omsRelayReturnUri(params),
       params.walletType ?? null,
       params.walletSelection ?? null,
-      stringifyOptionalNumber(params.sessionLifetimeSeconds),
+      serializeSessionLifetimeSeconds(
+        params.sessionLifetimeSeconds,
+        'wallet.startOidcRedirectAuth'
+      ),
       stringifyOptionalJson(params.authorizeParams),
       params.loginHint ?? null
     );
@@ -1253,7 +1324,10 @@ export class OMSWalletClient {
         nativeClientId(this.owner),
         params.callbackUrl,
         params.walletSelection ?? null,
-        stringifyOptionalNumber(params.sessionLifetimeSeconds)
+        serializeSessionLifetimeSeconds(
+          params.sessionLifetimeSeconds,
+          'wallet.handleOidcRedirectCallback'
+        )
       )
     );
     if (

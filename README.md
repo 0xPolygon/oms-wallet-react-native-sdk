@@ -90,7 +90,14 @@ const activeWallet = await omsWallet.wallet.getActiveWallet();
 const session = await omsWallet.wallet.getSession();
 ```
 
-`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change. `session.expiresAt` moves as the wallet API extends the session with use, up to the lifetime requested at sign-in.
+`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change.
+
+## Sessions
+
+- **Lifetime.** Sign-in requests 180 days (`DEFAULT_SESSION_LIFETIME_SECONDS`, also the maximum) unless you pass `sessionLifetimeSeconds`. The wallet API extends `session.expiresAt` with use, up to that lifetime, and ends a session after about 10 days without use. Pass a shorter `sessionLifetimeSeconds` for a hard limit.
+- **Expiry.** When `expiresAt` passes, a session past its requested lifetime ends at once. Otherwise the SDK asks the wallet API, once the app is in the foreground, and reports `expired` only if the session ended.
+- **Timeouts.** Requests signed with the session go one at a time and fail with `OMS_REQUEST_FAILED` after 30 seconds, counting the time spent waiting behind other requests. A transaction that times out after it was sent fails with `OMS_TRANSACTION_EXECUTION_UNCONFIRMED`: check its status before sending it again.
+- **Signing key.** On an iOS device, the session signing key is generated in the Secure Enclave and cannot be exported. If the Secure Enclave cannot create it, sign-in fails with `OMS_STORAGE_ERROR`. Android keeps the key in the Android Keystore.
 
 ## Authenticate With An OIDC ID Token
 
@@ -214,11 +221,13 @@ Inspect a remote credential before approval, authorize bounded smart-session gra
 ```ts
 const activeWallet = await omsWallet.wallet.getActiveWallet();
 
-const balances = await omsWallet.indexer.getBalances({
-  walletAddress: activeWallet!.address,
-  networks: [Networks.polygon],
-  includeMetadata: true,
-});
+if (activeWallet?.type === 'ethereum') {
+  const balances = await omsWallet.indexer.getBalances({
+    walletAddress: activeWallet.address,
+    networks: [Networks.polygon],
+    includeMetadata: true,
+  });
+}
 
 const solanaBalances = await omsWallet.indexer.getSolanaBalances({
   walletAddress: '<solana-address>',

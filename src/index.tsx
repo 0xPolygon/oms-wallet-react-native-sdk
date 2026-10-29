@@ -10,6 +10,10 @@ export {
 } from './networks';
 export type { Network, SolanaNetwork, TronNetwork } from './networks';
 export { formatUnits, parseUnits } from './units';
+export {
+  DEFAULT_SESSION_LIFETIME_SECONDS,
+  MAX_SESSION_LIFETIME_SECONDS,
+} from './sessionLifetime';
 export { OMSWalletError, isOMSWalletError } from './errors';
 export type {
   OMSWalletErrorCode,
@@ -71,6 +75,7 @@ export type {
   OMSWalletSession,
   OMSWalletSessionAuth,
   OMSWalletSessionChangeEvent,
+  OMSWalletSessionChangeListener,
   OMSWalletSessionChangeReason,
   PendingWalletSelection,
   RemoteAccessGrant,
@@ -96,6 +101,7 @@ export type {
   SolanaNetworkError,
   SolanaVerificationSource,
   SolanaVerificationStatus,
+  SortBy,
   StartEmailAuthParams,
   StartOidcRedirectAuthResult,
   StartOidcRedirectAuthParams,

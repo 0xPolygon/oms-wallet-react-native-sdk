@@ -39,7 +39,7 @@ getSession(): Promise<OMSWalletSession | undefined>;
 ### `OMSWalletClient.onSessionChange`
 
 ```ts
-onSessionChange(_listener: (event: OMSWalletSessionChangeEvent) => void): EventSubscription;
+onSessionChange(_listener: OMSWalletSessionChangeListener): EventSubscription;
 ```
 
 ### `OMSWalletClient.startEmailAuth`
@@ -324,6 +324,28 @@ export type OMSWalletSessionChangeEvent = {
     session: undefined;
     expiredSession: OMSWalletExpiredSession;
 };
+```
+
+### `OMSWalletSessionChangeListener`
+
+```ts
+export type OMSWalletSessionChangeListener = (event: OMSWalletSessionChangeEvent) => void;
+```
+
+### `DEFAULT_SESSION_LIFETIME_SECONDS`
+
+Session lifetime requested when `sessionLifetimeSeconds` is omitted (180 days, the maximum).
+
+```ts
+export declare const DEFAULT_SESSION_LIFETIME_SECONDS = 15552000;
+```
+
+### `MAX_SESSION_LIFETIME_SECONDS`
+
+Largest accepted `sessionLifetimeSeconds` (180 days).
+
+```ts
+export declare const MAX_SESSION_LIFETIME_SECONDS = 15552000;
 ```
 
 ### `WalletAccount`
@@ -1191,11 +1213,24 @@ export type MetadataOptions = {
 };
 ```
 
+### `SortBy`
+
+```ts
+export type SortBy = {
+    column: string;
+    order: 'DESC' | 'ASC';
+};
+```
+
 ### `TokenBalancesPageRequest`
 
 ```ts
 export type TokenBalancesPageRequest = {
     page?: number;
+    column?: string;
+    before?: unknown;
+    after?: unknown;
+    sort?: SortBy[];
     pageSize?: number;
 };
 ```
@@ -1205,6 +1240,11 @@ export type TokenBalancesPageRequest = {
 ```ts
 export type TokenBalancesPage = {
     page: number;
+    /** Cursor fields to pass back in the next page request. */
+    column?: string;
+    before?: unknown;
+    after?: unknown;
+    sort?: SortBy[];
     pageSize: number;
     more: boolean;
 };
@@ -1832,6 +1872,8 @@ export type OMSWalletUpstreamError = {
     code?: string;
     message?: string;
     status?: number;
+    /** The service's reason for this error, when it gives one. */
+    cause?: string;
 };
 ```
 

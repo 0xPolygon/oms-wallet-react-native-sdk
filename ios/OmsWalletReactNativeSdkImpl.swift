@@ -1297,9 +1297,20 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
   private func tokenBalancesPageDictionary(_ page: TokenBalancesPage) -> [String: Any] {
     [
       "page": NSNumber(value: page.page),
+      "column": page.column ?? NSNull(),
+      "beforeJson": page.before.flatMap(jsonString) ?? NSNull(),
+      "afterJson": page.after.flatMap(jsonString) ?? NSNull(),
+      "sort": page.sort?.map { ["column": $0.column, "order": $0.order.rawValue] } ?? NSNull(),
       "pageSize": NSNumber(value: page.pageSize),
       "more": NSNumber(value: page.more)
     ]
+  }
+
+  private func jsonString(_ value: JSONValue) -> String? {
+    guard let data = try? JSONEncoder().encode(value) else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
   }
 
   private func tokenBalanceDictionary(_ balance: TokenBalance) -> [String: Any] {
@@ -2098,6 +2109,7 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
       "name": error.name ?? NSNull(),
       "code": error.code ?? NSNull(),
       "message": error.message ?? NSNull(),
+      "cause": error.cause ?? NSNull(),
       "status": nullableNumber(error.status)
     ]
   }
@@ -2158,10 +2170,21 @@ private struct StoredPendingWalletSelection {
 
 private struct SerializableTokenBalancesPageRequest: Decodable {
   let page: Int?
+  let column: String?
+  let before: JSONValue?
+  let after: JSONValue?
+  let sort: [SortBy]?
   let pageSize: Int?
 
   var tokenBalancesPageRequest: TokenBalancesPageRequest {
-    TokenBalancesPageRequest(page: page, pageSize: pageSize)
+    TokenBalancesPageRequest(
+      page: page,
+      column: column,
+      before: before,
+      after: after,
+      sort: sort,
+      pageSize: pageSize
+    )
   }
 }
 

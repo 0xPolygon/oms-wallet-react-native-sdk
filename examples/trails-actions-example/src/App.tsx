@@ -1351,6 +1351,12 @@ export default function App() {
     [handleSessionExpired]
   );
 
+  // Subscribe before the first session read, so no change is missed.
+  useEffect(() => {
+    const subscription = omsWallet.wallet.onSessionChange(handleSessionChange);
+    return () => subscription.remove();
+  }, [handleSessionChange, omsWallet]);
+
   const runAction = useCallback(
     async (
       label: string,
@@ -1704,9 +1710,6 @@ export default function App() {
   useEffect(() => {
     if (!sdkReady) return undefined;
 
-    const sessionChangeSubscription =
-      omsWallet.wallet.onSessionChange(handleSessionChange);
-
     const handleRedirectUrl = (url: string) => {
       if (!isDemoOidcRedirectUrl(url)) return;
 
@@ -1736,13 +1739,11 @@ export default function App() {
       });
 
     return () => {
-      sessionChangeSubscription.remove();
       subscription.remove();
     };
   }, [
     appendLog,
     finishOidcRedirectSignIn,
-    handleSessionChange,
     omsWallet.wallet,
     runAction,
     sdkReady,

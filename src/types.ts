@@ -66,6 +66,10 @@ export type OMSWalletSessionChangeReason =
   | 'signedOut'
   | 'expired';
 
+export type OMSWalletSessionChangeListener = (
+  event: OMSWalletSessionChangeEvent
+) => void;
+
 /** The state right after a session change. */
 export type OMSWalletSessionChangeEvent =
   | {
@@ -364,8 +368,18 @@ export type FeeOptionSelection = {
   index?: number;
 };
 
+export type SortBy = {
+  column: string;
+  order: 'DESC' | 'ASC';
+};
+
 export type TokenBalancesPage = {
   page: number;
+  /** Cursor fields to pass back in the next page request. */
+  column?: string;
+  before?: unknown;
+  after?: unknown;
+  sort?: SortBy[];
   pageSize: number;
   more: boolean;
 };
@@ -549,6 +563,10 @@ export type MetadataOptions = {
 
 export type TokenBalancesPageRequest = {
   page?: number;
+  column?: string;
+  before?: unknown;
+  after?: unknown;
+  sort?: SortBy[];
   pageSize?: number;
 };
 

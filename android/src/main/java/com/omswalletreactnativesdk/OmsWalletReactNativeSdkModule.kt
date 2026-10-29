@@ -39,6 +39,8 @@ import technology.polygon.omswallet.models.RemoteCredentialMetadata
 import technology.polygon.omswallet.models.SendTransactionRequest
 import technology.polygon.omswallet.models.SmartSessionGrant
 import technology.polygon.omswallet.models.SmartSessionGrantUsage
+import technology.polygon.omswallet.models.SortBy
+import technology.polygon.omswallet.models.SortOrder
 import technology.polygon.omswallet.models.SolanaBalance
 import technology.polygon.omswallet.models.SolanaBalancesResult
 import technology.polygon.omswallet.models.SolanaNetworkError
@@ -1220,6 +1222,24 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private fun tokenBalancesPageMap(page: TokenBalancesPage): WritableMap =
     Arguments.createMap().apply {
       putInt("page", page.page)
+      putNullableString("column", page.column)
+      putNullableString("beforeJson", page.before?.toString())
+      putNullableString("afterJson", page.after?.toString())
+      page.sort?.let { sort ->
+        putArray(
+          "sort",
+          Arguments.createArray().apply {
+            sort.forEach {
+              pushMap(
+                Arguments.createMap().apply {
+                  putString("column", it.column)
+                  putString("order", it.order.wireValue)
+                }
+              )
+            }
+          }
+        )
+      } ?: putNull("sort")
       putInt("pageSize", page.pageSize)
       putBoolean("more", page.more)
     }
@@ -1855,7 +1875,19 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
     val value = objectParam("page") ?: return TokenBalancesPageRequest()
     return TokenBalancesPageRequest(
       page = value.intParam("page") ?: 0,
-      pageSize = value.intParam("pageSize") ?: 40
+      pageSize = value.intParam("pageSize") ?: 40,
+      column = value.stringParam("column"),
+      before = value["before"]?.takeUnless { it is JsonNull },
+      after = value["after"]?.takeUnless { it is JsonNull },
+      sort = value["sort"]?.takeUnless { it is JsonNull }?.jsonArray?.map { element ->
+        val item = element.jsonObject
+        SortBy(
+          column = item.requiredStringParam("column"),
+          order = item.requiredStringParam("order").let { order ->
+            SortOrder.entries.firstOrNull { it.wireValue == order } ?: error("Unsupported sort order: $order")
+          }
+        )
+      }
     )
   }
 
@@ -1992,10 +2024,11 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
 
   private fun upstreamErrorMap(error: OMSWalletUpstreamError): WritableMap =
     Arguments.createMap().apply {
-      putString("service", error.service.name.lowercase())
+      putString("service", error.service.wireValue)
       putNullableString("name", error.name)
       putNullableString("code", error.code)
       putNullableString("message", error.message)
+      putNullableString("cause", error.cause)
       error.status?.let { putDouble("status", it.toDouble()) } ?: putNull("status")
     }
 

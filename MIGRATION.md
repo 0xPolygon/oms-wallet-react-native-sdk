@@ -79,6 +79,14 @@ await omsWallet.wallet.importEncryptedWallet({ walletType: 'solana', keyMaterial
 
 ### Behavior changes
 
+- Any wallet call whose credential the wallet API rejects as not found or expired now fails with `OMS_SESSION_EXPIRED` instead of `OMS_REQUEST_FAILED`, and the session ends with an `expired` change. An expiry check that finds the credential revoked ends the session the same way.
+- When the local expiry passes but the wallet API cannot be reached, the session is kept and calls fail with `OMS_REQUEST_FAILED`, not `OMS_SESSION_EXPIRED`.
+- Requests signed with the session go one at a time, so a burst of calls takes longer. A request rejected for a stale nonce is signed again and resent, at most twice.
+- An empty or whitespace-only `walletAddress` in a signature check fails with `OMS_VALIDATION_ERROR`. Omit it to verify against the active wallet.
+- An invalid `sessionLifetimeSeconds` (not an integer from 1 to `MAX_SESSION_LIFETIME_SECONDS`) fails with `OMS_VALIDATION_ERROR` on both platforms before any request.
+- Wallet API and indexer responses are checked more strictly: an Ethereum wallet address that is not `0x` followed by 40 hexadecimal digits, or an indexer response that uses an older field name, fails with `OMS_INVALID_RESPONSE`.
+- On iOS, keychain items are now readable only while the device is unlocked and are never restored to another device from a backup; the user signs in again there.
+- On Android, the SDK reads the session expiry only once the app has a started activity, so a process started in the background (for example for a push message) does not extend an idle session.
 - `callContract` requires a bare function name such as `'transfer'`. A full signature such as `'transfer(address,uint256)'` now fails with `OMS_VALIDATION_ERROR` before any request.
 - A transaction the wallet API refuses before submitting it, for example because simulation shows it would revert, fails with `OMS_REQUEST_FAILED` (or `OMS_SESSION_EXPIRED` when the session has ended) instead of `OMS_TRANSACTION_EXECUTION_UNCONFIRMED`. It was never submitted.
 - Signed requests fail with `OMS_REQUEST_FAILED` after 30 seconds, counting the time spent waiting behind other signed requests. A transaction that times out after it was sent still fails with `OMS_TRANSACTION_EXECUTION_UNCONFIRMED`: check its status before sending it again.
@@ -87,6 +95,10 @@ await omsWallet.wallet.importEncryptedWallet({ walletType: 'solana', keyMaterial
 
 ### New APIs
 
+- `DEFAULT_SESSION_LIFETIME_SECONDS` and `MAX_SESSION_LIFETIME_SECONDS` (both 180 days)
+- `upstreamError.cause`, the service's reason for an error when it gives one
+- Indexer page cursors: `column`, `before`, `after`, and `sort` (`SortBy`) on `TokenBalancesPageRequest` and `TokenBalancesPage`
+- `OMSWalletSessionChangeListener`
 - Tron wallets: `signTronMessage`, `signTronTypedData`, `isValidTronMessageSignature`, `isValidTronTypedDataSignature`, `sendTronTransaction`, `callTronContract`, `indexer.getTronBalances`, and `TronNetworks`
 - Claimable wallets: `claimWallet`, `claimableWallets` on auth results and `PendingWalletSelection`, and `PendingWalletSelection.claimAndSelectWallet`
 

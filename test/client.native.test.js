@@ -656,27 +656,34 @@ test('normalizes wallet import attestation failures', () => {
   assert.equal(error.cause, nativeError);
 });
 
-test('normalizes native operation names to the React Native API spelling', () => {
+test('passes native operation names and upstream causes through', () => {
   const { normalizeNativeError } = require(errorsModulePath);
-  const operations = [
-    ['wallet.startOIDCRedirectAuth', 'wallet.startOidcRedirectAuth'],
-    ['wallet.handleOIDCRedirectCallback', 'wallet.handleOidcRedirectCallback'],
-    ['wallet.startOidcRedirectAuth', 'wallet.startOidcRedirectAuth'],
-    ['wallet.futureOperation', 'wallet.futureOperation'],
-  ];
-
-  for (const [nativeOperation, expectedOperation] of operations) {
-    const nativeError = Object.assign(new Error('Request failed'), {
+  const nativeError = Object.assign(new Error('Request failed'), {
+    code: 'OMS_REQUEST_FAILED',
+    userInfo: {
       code: 'OMS_REQUEST_FAILED',
-      userInfo: {
-        code: 'OMS_REQUEST_FAILED',
-        operation: nativeOperation,
+      operation: 'wallet.startOidcRedirectAuth',
+      upstreamError: {
+        service: 'waas',
+        name: 'InvalidRequest',
+        code: '7200',
+        message: 'Invalid request',
+        cause: 'walletId is required',
+        status: 400,
       },
-    });
+    },
+  });
 
-    const error = normalizeNativeError(nativeError);
-    assert.equal(error.operation, expectedOperation);
-  }
+  const error = normalizeNativeError(nativeError);
+  assert.equal(error.operation, 'wallet.startOidcRedirectAuth');
+  assert.deepEqual(error.upstreamError, {
+    service: 'waas',
+    name: 'InvalidRequest',
+    code: '7200',
+    message: 'Invalid request',
+    status: 400,
+    cause: 'walletId is required',
+  });
 });
 
 test('replaces the single native client without retaining stale subscribers', async () => {
@@ -1092,6 +1099,113 @@ test('hydrates session changes and replays only the latest expiry', async () => 
   subscription.remove();
 });
 
+test('keeps a newer client listeners when an older subscription is removed', () => {
+  const { client, native } = loadClient();
+  const first = subscribe(createOms(client));
+  const second = subscribe(createOms(client));
+
+  first.subscription.remove();
+  emitSessionChange(native, 'oms-wallet', {
+    reason: 'signedOut',
+    activeWallet: null,
+    session: null,
+    expiredSession: null,
+  });
+
+  assert.deepEqual(second.events, [
+    { reason: 'signedOut', activeWallet: undefined, session: undefined },
+  ]);
+  second.subscription.remove();
+});
+
+test('delivers a session change to every listener when one throws', () => {
+  const { client, native } = loadClient();
+  const oms = createOms(client);
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    oms.wallet.onSessionChange(() => {
+      throw new Error('listener failed');
+    });
+    const { events } = subscribe(oms);
+
+    emitSessionChange(native, 'oms-wallet', {
+      reason: 'signedOut',
+      activeWallet: null,
+      session: null,
+      expiredSession: null,
+    });
+
+    assert.equal(events.length, 1);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('rejects an invalid session lifetime before calling native', async () => {
+  const { calls, client } = loadClient();
+  const { OMSWalletError } = require(errorsModulePath);
+  const oms = createOms(client);
+
+  for (const sessionLifetimeSeconds of [0, -1, 1.5, 15_552_001]) {
+    await assert.rejects(
+      oms.wallet.startEmailAuth({
+        email: 'user@example.com',
+        sessionLifetimeSeconds,
+      }),
+      (error) => {
+        assert.equal(error instanceof OMSWalletError, true);
+        assert.equal(error.code, 'OMS_VALIDATION_ERROR');
+        assert.equal(error.operation, 'wallet.startEmailAuth');
+        return true;
+      }
+    );
+  }
+  assert.deepEqual(calls.startEmailAuth, []);
+});
+
+test('passes indexer page cursors to native and hydrates them back', async () => {
+  const { calls, client } = loadClient({
+    getBalances: async () => ({
+      status: 200,
+      page: {
+        page: 1,
+        column: 'id',
+        beforeJson: null,
+        afterJson: JSON.stringify({ id: 42 }),
+        sort: [{ column: 'id', order: 'ASC' }],
+        pageSize: 10,
+        more: true,
+      },
+      nativeBalances: [],
+      balances: [],
+    }),
+  });
+  const oms = createOms(client);
+  const page = {
+    column: 'id',
+    after: { id: 41 },
+    sort: [{ column: 'id', order: 'ASC' }],
+    pageSize: 10,
+  };
+
+  const result = await oms.indexer.getBalances({
+    walletAddress: '0xwallet',
+    page,
+  });
+
+  assert.deepEqual(JSON.parse(calls.getBalances[0][1]).page, page);
+  assert.deepEqual(result.page, {
+    page: 1,
+    column: 'id',
+    before: undefined,
+    after: { id: 42 },
+    sort: [{ column: 'id', order: 'ASC' }],
+    pageSize: 10,
+    more: true,
+  });
+});
+
 test('passes an explicit or omitted verification address to native', async () => {
   const { calls, client } = loadClient();
   const oms = createOms(client);
@@ -1505,6 +1619,10 @@ test('normalizes optional native nulls at public model boundaries', async () => 
   });
   assert.deepEqual(balances.page, {
     page: 0,
+    column: undefined,
+    before: undefined,
+    after: undefined,
+    sort: undefined,
     pageSize: 40,
     more: false,
   });

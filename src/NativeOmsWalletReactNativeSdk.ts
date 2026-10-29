@@ -83,8 +83,18 @@ export type OmsNativeSessionChangeEvent = {
   expiredSession: OmsNativeExpiredSession | null;
 };
 
+export type OmsNativeSortBy = {
+  column: string;
+  order: string;
+};
+
 export type OmsNativeTokenBalancesPage = {
   page: number;
+  column?: string | null;
+  // Arbitrary JSON cursor values, serialized because codegen has no JSON value type.
+  beforeJson?: string | null;
+  afterJson?: string | null;
+  sort?: OmsNativeSortBy[] | null;
   pageSize: number;
   more: boolean;
 };

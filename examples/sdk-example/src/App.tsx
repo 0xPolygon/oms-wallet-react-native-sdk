@@ -22,6 +22,7 @@ import {
   OMSWallet,
   Networks,
   OmsRelayOidcProviders,
+  DEFAULT_SESSION_LIFETIME_SECONDS,
   type OMSWalletExpiredSession,
   type OMSWalletSession,
   type OMSWalletSessionAuth,
@@ -47,7 +48,6 @@ const DEMO_GOOGLE_IOS_CLIENT_ID =
 
 const DEFAULT_TRANSACTION_TO = '0xE5E8B483FfC05967FcFed58cc98D053265af6D99';
 const PREFERRED_NETWORK_ORDER = ['80002', '137'];
-const DEFAULT_SESSION_LIFETIME_SECONDS = '604800';
 /** The wallet session as the demo shows it. */
 type DemoSessionState = {
   walletAddress: string | undefined;
@@ -406,7 +406,7 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState('Waiting for sign-in.');
   const [manualWalletSelection, setManualWalletSelection] = useState(false);
   const [sessionLifetimeSeconds, setSessionLifetimeSeconds] = useState(
-    DEFAULT_SESSION_LIFETIME_SECONDS
+    String(DEFAULT_SESSION_LIFETIME_SECONDS)
   );
   const [expiredSessionEvent, setExpiredSessionEvent] =
     useState<OMSWalletExpiredSession | null>(null);
@@ -585,6 +585,12 @@ export default function App() {
     [handleSessionExpired]
   );
 
+  // Subscribe before the first session read, so no change is missed.
+  useEffect(() => {
+    const subscription = omsWallet.wallet.onSessionChange(handleSessionChange);
+    return () => subscription.remove();
+  }, [handleSessionChange, omsWallet]);
+
   const activateWallet = useCallback(
     async (result: WalletActivationResult) => {
       const nextSession = demoSessionState(
@@ -707,8 +713,6 @@ export default function App() {
   useEffect(() => {
     if (!sdkReady) return undefined;
 
-    const sessionChangeSubscription =
-      omsWallet.wallet.onSessionChange(handleSessionChange);
     const subscription = Linking.addEventListener('url', ({ url }) => {
       if (isDemoOidcRedirectUrl(url)) {
         runAction(
@@ -742,17 +746,9 @@ export default function App() {
       });
 
     return () => {
-      sessionChangeSubscription.remove();
       subscription.remove();
     };
-  }, [
-    appendLog,
-    finishOidcRedirectSignIn,
-    handleSessionChange,
-    omsWallet,
-    runAction,
-    sdkReady,
-  ]);
+  }, [appendLog, finishOidcRedirectSignIn, omsWallet, runAction, sdkReady]);
 
   const walletAddress = session.walletAddress;
   const isSignedIn = walletAddress != null;
