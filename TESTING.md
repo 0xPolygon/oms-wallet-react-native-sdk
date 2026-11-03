@@ -78,7 +78,7 @@ The current example's workspace and scheme are `OMSExpoExample`.
   - Location: `test/*.test.js`.
   - Command: `yarn test`.
   - Current native bridge tests mock `lib/commonjs/NativeOmsWalletReactNativeSdk.js` after
-    `yarn prepare`, then import `lib/commonjs/client.native.js`.
+    `yarn prepare`, then import `lib/commonjs/client.js`.
 
 - **Integration tests** — tests that exercise the native bridge on a real device or simulator.
   These require a connected device/emulator and valid OMS credentials. Not expected to run in

@@ -10,7 +10,12 @@
 export declare class OMSWallet {
     readonly wallet: OMSWalletClient;
     readonly indexer: OMSIndexerClient;
-    constructor(_config: OMSWalletParams);
+    /**
+     * Creates the native client synchronously, restoring a saved session. Throws
+     * `OMSWalletError` when the client cannot be created, for example for an
+     * invalid publishable key. A new instance replaces the previous one.
+     */
+    constructor(config: OMSWalletParams);
 }
 ```
 
@@ -26,11 +31,19 @@ export type OMSWalletParams = {
 
 ### `OMSWalletClient.activeWallet`
 
+The active wallet, or `undefined` when signed out or while a manual
+wallet selection is pending. Read synchronously from the native SDK, so it
+is current right after a sign-in or wallet change returns. Returns the same
+object until the active wallet or session changes.
+
 ```ts
 get activeWallet(): WalletAccount | undefined;
 ```
 
 ### `OMSWalletClient.session`
+
+The active session; defined exactly when `activeWallet` is. Returns the
+same object until the active wallet or session changes.
 
 ```ts
 get session(): OMSWalletSession | undefined;
@@ -38,38 +51,43 @@ get session(): OMSWalletSession | undefined;
 
 ### `OMSWalletClient.onSessionChange`
 
+Calls `listener` after every change of `activeWallet` or `session`, and
+returns a function that removes the listener. A listener added while
+signed out first receives the last `expired` change, until a sign-in
+starts or the user signs out.
+
 ```ts
-onSessionChange(_listener: OMSWalletSessionChangeListener): () => void;
+onSessionChange(listener: OMSWalletSessionChangeListener): () => void;
 ```
 
 ### `OMSWalletClient.startEmailAuth`
 
 ```ts
-startEmailAuth(_params: StartEmailAuthParams): Promise<void>;
+startEmailAuth(params: StartEmailAuthParams): Promise<void>;
 ```
 
 ### `OMSWalletClient.completeEmailAuth`
 
 ```ts
-completeEmailAuth(_params: CompleteEmailAuthParams): Promise<CompleteAuthResult>;
+completeEmailAuth(params: CompleteEmailAuthParams): Promise<CompleteAuthResult>;
 ```
 
 ### `OMSWalletClient.signInWithOidcIdToken`
 
 ```ts
-signInWithOidcIdToken(_params: SignInWithOidcIdTokenParams): Promise<CompleteAuthResult>;
+signInWithOidcIdToken(params: SignInWithOidcIdTokenParams): Promise<CompleteAuthResult>;
 ```
 
 ### `OMSWalletClient.startOidcRedirectAuth`
 
 ```ts
-startOidcRedirectAuth(_params: StartOidcRedirectAuthParams): Promise<StartOidcRedirectAuthResult>;
+startOidcRedirectAuth(params: StartOidcRedirectAuthParams): Promise<StartOidcRedirectAuthResult>;
 ```
 
 ### `OMSWalletClient.handleOidcRedirectCallback`
 
 ```ts
-handleOidcRedirectCallback(_params: HandleOidcRedirectCallbackParams): Promise<OidcRedirectAuthResult>;
+handleOidcRedirectCallback(params: HandleOidcRedirectCallbackParams): Promise<OidcRedirectAuthResult>;
 ```
 
 ### `OMSWalletClient.listWallets`
@@ -81,31 +99,35 @@ listWallets(): Promise<WalletAccount[]>;
 ### `OMSWalletClient.useWallet`
 
 ```ts
-useWallet(_walletId: string): Promise<WalletActivationResult>;
+useWallet(walletId: string): Promise<WalletActivationResult>;
 ```
 
 ### `OMSWalletClient.claimWallet`
 
+Claims a preallocated wallet for the signed-in user and makes it the
+active wallet. During a pending manual selection, use
+`PendingWalletSelection.claimAndSelectWallet`.
+
 ```ts
-claimWallet(_walletId: string): Promise<WalletActivationResult>;
+claimWallet(walletId: string): Promise<WalletActivationResult>;
 ```
 
 ### `OMSWalletClient.createWallet`
 
 ```ts
-createWallet(_params?: CreateWalletParams): Promise<WalletActivationResult>;
+createWallet(params?: CreateWalletParams): Promise<WalletActivationResult>;
 ```
 
 ### `OMSWalletClient.importWallet`
 
 ```ts
-importWallet(_params: ImportWalletParams): Promise<WalletActivationResult>;
+importWallet(params: ImportWalletParams): Promise<WalletActivationResult>;
 ```
 
 ### `OMSWalletClient.getWalletImportRecipientKey`
 
 ```ts
-getWalletImportRecipientKey(_params: {
+getWalletImportRecipientKey(params: {
         cipherSuite: WalletImportCipherSuite;
     }): Promise<WalletImportRecipientKey>;
 ```
@@ -113,7 +135,7 @@ getWalletImportRecipientKey(_params: {
 ### `OMSWalletClient.importEncryptedWallet`
 
 ```ts
-importEncryptedWallet(_params: ImportEncryptedWalletParams): Promise<WalletActivationResult>;
+importEncryptedWallet(params: ImportEncryptedWalletParams): Promise<WalletActivationResult>;
 ```
 
 ### `OMSWalletClient.signOut`
@@ -125,13 +147,13 @@ signOut(): Promise<void>;
 ### `OMSWalletClient.getIdToken`
 
 ```ts
-getIdToken(_params?: GetIdTokenParams): Promise<string>;
+getIdToken(params?: GetIdTokenParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.inspectRemoteCredential`
 
 ```ts
-inspectRemoteCredential(_params: {
+inspectRemoteCredential(params: {
         credentialId: string;
     }): Promise<RemoteCredentialMetadata>;
 ```
@@ -139,31 +161,31 @@ inspectRemoteCredential(_params: {
 ### `OMSWalletClient.authorizeRemoteAccess`
 
 ```ts
-authorizeRemoteAccess(_params: AuthorizeRemoteAccessParams): Promise<AuthorizedRemoteAccess>;
+authorizeRemoteAccess(params: AuthorizeRemoteAccessParams): Promise<AuthorizedRemoteAccess>;
 ```
 
 ### `OMSWalletClient.listAccess`
 
 ```ts
-listAccess(_params?: ListAccessParams): Promise<AccessGrant[]>;
+listAccess(params?: ListAccessParams): Promise<AccessGrant[]>;
 ```
 
 ### `OMSWalletClient.listAccessPages`
 
 ```ts
-listAccessPages(_params?: ListAccessParams): AsyncGenerator<AccessGrantPage, void, void>;
+listAccessPages(params?: ListAccessParams): AsyncGenerator<AccessGrantPage, void, void>;
 ```
 
 ### `OMSWalletClient.listAccessPage`
 
 ```ts
-listAccessPage(_params?: ListAccessPageParams): Promise<AccessGrantPage>;
+listAccessPage(params?: ListAccessPageParams): Promise<AccessGrantPage>;
 ```
 
 ### `OMSWalletClient.getRemoteAccessSession`
 
 ```ts
-getRemoteAccessSession(_params: {
+getRemoteAccessSession(params: {
         sessionId: string;
     }): Promise<RemoteAccessSession>;
 ```
@@ -171,7 +193,7 @@ getRemoteAccessSession(_params: {
 ### `OMSWalletClient.getRemoteAccessSessionUsage`
 
 ```ts
-getRemoteAccessSessionUsage(_params: {
+getRemoteAccessSessionUsage(params: {
         sessionId: string;
         network: Network;
     }): Promise<SmartSessionGrantUsage[]>;
@@ -180,7 +202,7 @@ getRemoteAccessSessionUsage(_params: {
 ### `OMSWalletClient.revokeAccess`
 
 ```ts
-revokeAccess(_params: RevokeAccessParams): Promise<void>;
+revokeAccess(params: RevokeAccessParams): Promise<void>;
 ```
 
 ### `OmsRelayOidcProviders`
@@ -768,97 +790,97 @@ export type ListAccessPageParams = {
 ### `OMSWalletClient.signMessage`
 
 ```ts
-signMessage(_params: SignMessageParams): Promise<string>;
+signMessage(params: SignMessageParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.signSolanaMessage`
 
 ```ts
-signSolanaMessage(_params: SignSolanaMessageParams): Promise<string>;
+signSolanaMessage(params: SignSolanaMessageParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.signTypedData`
 
 ```ts
-signTypedData(_params: SignTypedDataParams): Promise<string>;
+signTypedData(params: SignTypedDataParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.signTronMessage`
 
 ```ts
-signTronMessage(_params: SignTronMessageParams): Promise<string>;
+signTronMessage(params: SignTronMessageParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.signTronTypedData`
 
 ```ts
-signTronTypedData(_params: SignTronTypedDataParams): Promise<string>;
+signTronTypedData(params: SignTronTypedDataParams): Promise<string>;
 ```
 
 ### `OMSWalletClient.sendTransaction`
 
 ```ts
-sendTransaction(_params: SendTransactionParams): Promise<SendTransactionResponse>;
+sendTransaction(params: SendTransactionParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.sendSolanaTransfer`
 
 ```ts
-sendSolanaTransfer(_params: SendSolanaTransferParams): Promise<SendTransactionResponse>;
+sendSolanaTransfer(params: SendSolanaTransferParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.sendTronTransaction`
 
 ```ts
-sendTronTransaction(_params: SendTronTransactionParams): Promise<SendTransactionResponse>;
+sendTronTransaction(params: SendTronTransactionParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.callContract`
 
 ```ts
-callContract(_params: CallContractParams): Promise<SendTransactionResponse>;
+callContract(params: CallContractParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.callTronContract`
 
 ```ts
-callTronContract(_params: CallTronContractParams): Promise<SendTransactionResponse>;
+callTronContract(params: CallTronContractParams): Promise<SendTransactionResponse>;
 ```
 
 ### `OMSWalletClient.getTransactionStatus`
 
 ```ts
-getTransactionStatus(_txnId: string): Promise<TransactionStatusResponse>;
+getTransactionStatus(txnId: string): Promise<TransactionStatusResponse>;
 ```
 
 ### `OMSWalletClient.isValidMessageSignature`
 
 ```ts
-isValidMessageSignature(_params: IsValidMessageSignatureParams): Promise<boolean>;
+isValidMessageSignature(params: IsValidMessageSignatureParams): Promise<boolean>;
 ```
 
 ### `OMSWalletClient.isValidSolanaMessageSignature`
 
 ```ts
-isValidSolanaMessageSignature(_params: IsValidSolanaMessageSignatureParams): Promise<boolean>;
+isValidSolanaMessageSignature(params: IsValidSolanaMessageSignatureParams): Promise<boolean>;
 ```
 
 ### `OMSWalletClient.isValidTypedDataSignature`
 
 ```ts
-isValidTypedDataSignature(_params: IsValidTypedDataSignatureParams): Promise<boolean>;
+isValidTypedDataSignature(params: IsValidTypedDataSignatureParams): Promise<boolean>;
 ```
 
 ### `OMSWalletClient.isValidTronMessageSignature`
 
 ```ts
-isValidTronMessageSignature(_params: IsValidTronMessageSignatureParams): Promise<boolean>;
+isValidTronMessageSignature(params: IsValidTronMessageSignatureParams): Promise<boolean>;
 ```
 
 ### `OMSWalletClient.isValidTronTypedDataSignature`
 
 ```ts
-isValidTronTypedDataSignature(_params: IsValidTronTypedDataSignatureParams): Promise<boolean>;
+isValidTronTypedDataSignature(params: IsValidTronTypedDataSignatureParams): Promise<boolean>;
 ```
 
 ### `FeeOptionSelectors`
@@ -1170,25 +1192,25 @@ export type CallTronContractParams = {
 ### `OMSIndexerClient.getBalances`
 
 ```ts
-getBalances(_params: GetBalancesParams): Promise<BalancesResult>;
+getBalances(params: GetBalancesParams): Promise<BalancesResult>;
 ```
 
 ### `OMSIndexerClient.getTransactionHistory`
 
 ```ts
-getTransactionHistory(_params: GetTransactionHistoryParams): Promise<TransactionHistoryResult>;
+getTransactionHistory(params: GetTransactionHistoryParams): Promise<TransactionHistoryResult>;
 ```
 
 ### `OMSIndexerClient.getSolanaBalances`
 
 ```ts
-getSolanaBalances(_params: GetSolanaBalancesParams): Promise<SolanaBalancesResult>;
+getSolanaBalances(params: GetSolanaBalancesParams): Promise<SolanaBalancesResult>;
 ```
 
 ### `OMSIndexerClient.getTronBalances`
 
 ```ts
-getTronBalances(_params: GetTronBalancesParams): Promise<TronBalancesResult>;
+getTronBalances(params: GetTronBalancesParams): Promise<TronBalancesResult>;
 ```
 
 ### `IndexerNetworkType`

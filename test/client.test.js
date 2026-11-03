@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const rootDir = path.resolve(__dirname, '..');
-const clientModulePath = path.join(rootDir, 'lib/commonjs/client.native.js');
+const clientModulePath = path.join(rootDir, 'lib/commonjs/client.js');
 const nativeModulePath = path.join(
   rootDir,
   'lib/commonjs/NativeOmsWalletReactNativeSdk.js'
@@ -494,6 +494,24 @@ async function expectReplayCleared(action) {
   const { events } = subscribe(oms);
   assert.deepEqual(events, []);
 }
+
+test('imports without the native module and throws on first use', () => {
+  const clientModuleId = require.resolve(clientModulePath);
+  const nativeModuleId = require.resolve(nativeModulePath);
+  delete require.cache[clientModuleId];
+  require.cache[nativeModuleId] = {
+    id: nativeModuleId,
+    filename: nativeModuleId,
+    loaded: true,
+    exports: { __esModule: true, default: null },
+  };
+
+  // Importing on an unsupported platform, such as web, does not throw.
+  const client = require(clientModuleId);
+  assert.throws(() => createOms(client), /only supported on iOS and Android/);
+  delete require.cache[nativeModuleId];
+  delete require.cache[clientModuleId];
+});
 
 test('creates a native client and routes instance calls with its client id', () => {
   const { calls, client } = loadClient();

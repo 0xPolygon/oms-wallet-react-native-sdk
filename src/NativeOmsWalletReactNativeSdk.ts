@@ -711,6 +711,5 @@ export interface Spec extends TurboModule {
   ): Promise<void>;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>(
-  'OmsWalletReactNativeSdk'
-);
+// `null` outside iOS and Android; the client reports that on first use.
+export default TurboModuleRegistry.get<Spec>('OmsWalletReactNativeSdk');
