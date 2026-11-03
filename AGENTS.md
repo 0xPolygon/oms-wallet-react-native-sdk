@@ -183,7 +183,8 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
   `yarn expo-example:install` from the root to install dependencies, then run Expo example scripts
   from the root.
 - `yarn prepare` regenerates `lib/` — if builds look stale, run `yarn clean && yarn prepare`.
-- The podspec resolves `oms-wallet-swift-sdk` and the Android module resolves
+- The podspec pulls the Swift SDK's `OMSWallet` product from `0xsequence/swift-sdk` with Swift
+  Package Manager (React Native's `spm_dependency`), and the Android module resolves
   `io.github.0xsequence:oms-wallet-kotlin-sdk`. Native SDK pins live in the podspec (Swift)
   and `android/build.gradle` (Kotlin); update whichever dependency is actually changing.
 - Turbo cache can mask failures: if something seems wrong, run with `--force` to skip the cache.

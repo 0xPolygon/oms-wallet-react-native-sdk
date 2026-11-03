@@ -4,6 +4,14 @@
 
 Version 0.4.0 uses version 0.4.0 of the Swift and Kotlin SDKs. It replaces the wallet address and expiry APIs with the active wallet and session change APIs, and adds Tron wallets and claimable wallets.
 
+### The Swift SDK comes from Swift Package Manager
+
+On iOS, the module now pulls the Swift SDK with Swift Package Manager instead of the
+`oms-wallet-swift-sdk` pod, which is no longer published to CocoaPods. Run `pod install` after
+upgrading, and keep the `react_native_post_install` call in your `Podfile`'s `post_install` hook, as in
+the React Native template; Expo adds it for you. Remove any `pod 'oms-wallet-swift-sdk'` line you added
+yourself.
+
 ### One-time sign-in after upgrading
 
 The native SDKs store sessions in a new format and do not restore sessions saved by 0.3. Each user signs in once after the upgrade.

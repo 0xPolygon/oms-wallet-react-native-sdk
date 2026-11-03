@@ -3,10 +3,8 @@ PODS:
   - hermes-engine (250829098.0.10):
     - hermes-engine/Pre-built (= 250829098.0.10)
   - hermes-engine/Pre-built (250829098.0.10)
-  - oms-wallet-swift-sdk (0.3.1)
-  - OmsWalletReactNativeSdk (0.3.1):
+  - OmsWalletReactNativeSdk (0.3.2):
     - hermes-engine
-    - oms-wallet-swift-sdk (= 0.3.1)
     - RCTRequired
     - RCTTypeSafety
     - React-Core
@@ -1894,10 +1892,6 @@ DEPENDENCIES:
   - RNInAppBrowser (from `../node_modules/react-native-inappbrowser-reborn`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
-SPEC REPOS:
-  trunk:
-    - oms-wallet-swift-sdk
-
 EXTERNAL SOURCES:
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
@@ -2055,9 +2049,8 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   FBLazyVector: 24e62c765683b8d89006a88a2c8f5cf019f0074d
-  hermes-engine: 050bf0e0b60ac8f6b274d047bab7d63320f019cc
-  oms-wallet-swift-sdk: 5ab441e6db91d0579b8ea7df4adcb2fa367ee29c
-  OmsWalletReactNativeSdk: a706f6933b8a69de936cf629898bf26a9b4e0990
+  hermes-engine: c01dfdc05a7d6509b257129189bfb58a96590d3b
+  OmsWalletReactNativeSdk: cd327333d1c6b7e3247f7314612fe69ca6b95f0f
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
   RCTRequired: 9f3a7e5645d4bc3f551593de7550bb66ab6e42bc
   RCTSwiftUI: 239ed2eb9e73de5a6f518810630f0c95e01c8702
@@ -2066,7 +2059,7 @@ SPEC CHECKSUMS:
   React: e2dc35338068bbd299c66f043ae0d7f25de8499e
   React-callinvoker: 28b25d21b124c26cebaea713ba7d801b9351dc48
   React-Core: f90d375d3bab515ad00df30605ce1bf02e6db12f
-  React-Core-prebuilt: bd567b119737176084436942e59dc87cd8b0c7f7
+  React-Core-prebuilt: b809e8f18c1f0515c1bfaa29d31571e03aa3d6cd
   React-CoreModules: da4f80202ef954bdfb926ca4c9ac5f685900aa5c
   React-cxxreact: 1d1d2a28a5f10e4e2e7cf2bfd54dc9c92c68c672
   React-debug: 92944dc4d89f56d640e75498266cbde557a48189
@@ -2130,7 +2123,7 @@ SPEC CHECKSUMS:
   ReactCommon: 3ec2a55999d296af90c24beb66c8a77dc660d3ef
   ReactNativeDependencies: aa020a3b32eb01c8ad2837b6b1d592b9d4f3ba85
   RNInAppBrowser: b53e6f6072c931115bc22ac9dc9510ac2cbea62d
-  Yoga: 36fee8f1fca3f54a28c3d7f80e69f66d73d3af96
+  Yoga: 77dfa8673de2874e1855002ae59c68b8be9b007b
 
 PODFILE CHECKSUM: 287c20e8b3351f7d564be9fd7544afe469845e93
 

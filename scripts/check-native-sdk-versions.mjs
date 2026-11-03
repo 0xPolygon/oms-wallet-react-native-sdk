@@ -23,7 +23,7 @@ const kotlinVersion = requireVersion(
 );
 const swiftVersion = requireVersion(
   podspec,
-  /s\.dependency\s+"oms-wallet-swift-sdk",\s+"([^"]+)"/,
+  /kind:\s*"exactVersion",\s*version:\s*"([^"]+)"/,
   'Swift SDK'
 );
 

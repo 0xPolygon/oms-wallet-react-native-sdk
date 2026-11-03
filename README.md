@@ -27,6 +27,10 @@ React Native autolinking connects the native modules. Install the iOS pods after
 npx pod-install
 ```
 
+On iOS, the module pulls the Swift SDK with Swift Package Manager through React Native's
+`spm_dependency`. Keep the `react_native_post_install` call in your `Podfile`'s `post_install` hook,
+as in the React Native template; Expo adds it for you.
+
 ## Expo
 
 Install the package in an app on Expo SDK 56 or newer:

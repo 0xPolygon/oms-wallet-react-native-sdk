@@ -11,6 +11,7 @@ Uses version 0.4.0 of the Swift and Kotlin SDKs, with an active-wallet session A
 - `walletAddress` was removed from `WalletActivationResult` and `CompleteAuthResult`; use `wallet.address`.
 - `importEncryptedWallet` takes `walletType` instead of `type`.
 - Users sign in once after upgrading: sessions saved by 0.3 are not restored.
+- On iOS, the Swift SDK now comes from Swift Package Manager instead of CocoaPods. Run `pod install` after upgrading, and keep `react_native_post_install` in your `Podfile`.
 
 ### New
 
