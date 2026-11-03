@@ -1274,6 +1274,8 @@ export default function App() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const handledRedirectUrlsRef = useRef(new Set<string>());
   const sessionChangeCountRef = useRef(0);
+  // Whether the latest session change ended the session (expired or signed out).
+  const lastChangeEndedSessionRef = useRef(false);
   const handlingRedirectUrlRef = useRef<string | null>(null);
 
   const appendLog = useCallback((messageToAppend: string) => {
@@ -1353,6 +1355,8 @@ export default function App() {
   const handleSessionChange = useCallback(
     (event: OMSWalletSessionChangeEvent) => {
       sessionChangeCountRef.current += 1;
+      lastChangeEndedSessionRef.current =
+        event.reason === 'expired' || event.reason === 'signedOut';
       if (event.reason === 'expired') {
         handleSessionExpired(event.expiredSession);
         return;
@@ -1414,6 +1418,10 @@ export default function App() {
                   )
                 : await result.result.pendingSelection.createAndSelectWallet();
               const nextSession = await refreshSession();
+              // A newer change ended the session during the read; its handler updated the screen.
+              if (nextSession == null && lastChangeEndedSessionRef.current) {
+                break;
+              }
               setCode('');
               setAuthStage('email');
               setAuthStatus('Google redirect login complete');
@@ -1423,6 +1431,9 @@ export default function App() {
               break;
             }
             const nextSession = await refreshSession();
+            if (nextSession == null && lastChangeEndedSessionRef.current) {
+              break;
+            }
             const address =
               nextSession?.walletAddress ?? result.result.wallet.address;
             setCode('');
@@ -1887,6 +1898,10 @@ export default function App() {
           code: requireText(code, 'Code'),
         });
         const nextSession = await refreshSession();
+        // A newer change ended the session during the read; its handler updated the screen.
+        if (nextSession == null && lastChangeEndedSessionRef.current) {
+          return;
+        }
         clearExpiredSessionState();
         setCode('');
         setAuthStage('email');

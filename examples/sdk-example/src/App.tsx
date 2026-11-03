@@ -446,6 +446,8 @@ export default function App() {
   >([]);
   const handledRedirectUrlsRef = useRef(new Set<string>());
   const sessionChangeCountRef = useRef(0);
+  // Whether the latest session change ended the session (expired or signed out).
+  const lastChangeEndedSessionRef = useRef(false);
   const handlingRedirectUrlRef = useRef<string | null>(null);
   const feeOptionSelectionResolverRef = useRef<
     ((selection: FeeOptionSelection | undefined) => void) | null
@@ -597,6 +599,8 @@ export default function App() {
   const handleSessionChange = useCallback(
     (event: OMSWalletSessionChangeEvent) => {
       sessionChangeCountRef.current += 1;
+      lastChangeEndedSessionRef.current =
+        event.reason === 'expired' || event.reason === 'signedOut';
       if (event.reason === 'expired') {
         handleSessionExpired(event.expiredSession);
         return;
@@ -612,14 +616,20 @@ export default function App() {
     return () => subscription.remove();
   }, [handleSessionChange, omsWallet]);
 
+  // Shows the activated wallet. Returns false when a session change during the
+  // read ended the session: that change is newer, and its handler already
+  // updated the screen, so this must not report a sign-in.
   const activateWallet = useCallback(
     async (result: WalletActivationResult) => {
       const nextSession = await readSessionState();
-      const address = nextSession?.walletAddress ?? result.wallet.address;
-      clearExpiredSessionState();
       setPendingWalletSelection(null);
       setCode('');
       setAuthStage('email');
+      if (nextSession == null && lastChangeEndedSessionRef.current) {
+        return false;
+      }
+      const address = nextSession?.walletAddress ?? result.wallet.address;
+      clearExpiredSessionState();
       if (nextSession != null) {
         setSession(
           nextSession.walletAddress
@@ -635,6 +645,7 @@ export default function App() {
       setSignatureStatus('Signature status: ready to sign.');
       setTransactionStatus('Transaction status: ready to send.');
       appendLog(`Wallet ready: ${address}`);
+      return true;
     },
     [appendLog, clearExpiredSessionState, readSessionState]
   );
@@ -669,7 +680,9 @@ export default function App() {
               );
               break;
             }
-            await activateWallet({ wallet: result.result.wallet });
+            if (!(await activateWallet({ wallet: result.result.wallet }))) {
+              break;
+            }
             setAuthStatus('Redirect login complete');
             appendLog(
               `Redirect sign-in complete: ${result.result.wallet.address}`
@@ -862,7 +875,9 @@ export default function App() {
           return;
         }
 
-        await activateWallet({ wallet: authResult.wallet });
+        if (!(await activateWallet({ wallet: authResult.wallet }))) {
+          return;
+        }
         setAuthStatus('Google ID token login complete');
         appendLog(
           `Google ID token sign-in complete: ${authResult.wallet.address}`
