@@ -61,7 +61,7 @@ const omsWallet = new OMSWallet({
 });
 ```
 
-The constructor creates the native client synchronously and restores a saved session, so `omsWallet.wallet.activeWallet` is set as soon as it returns. It throws `OMSWalletError` when the client cannot be created, for example for an invalid publishable key.
+The constructor creates the native client synchronously and restores a saved session, so `omsWallet.wallet.activeWallet` is usually set as soon as it returns. On iOS, when the app launches in the background while the device is locked, the keychain cannot be read yet: the session is restored once the device is unlocked, and `onSessionChange` then reports a `signedIn` change. The constructor throws `OMSWalletError` when the client cannot be created, for example for an invalid publishable key.
 
 Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Create the instance once in its own module, as above, and import it where needed. Fast Refresh re-runs a module that exports non-component values when you edit it, so editing that module creates a new instance; reload the app after changing it.
 
@@ -83,7 +83,7 @@ Automatic wallet selection is the default. Handle `walletSelection` only when an
 
 ## Keep Your UI In Sync
 
-`omsWallet.wallet.activeWallet` and `omsWallet.wallet.session` are read synchronously from the native SDK, so they are current as soon as a sign-in or wallet change returns. They return the same objects until the active wallet or session changes. `onSessionChange` calls your listener after every change and returns a function that removes it:
+`omsWallet.wallet.activeWallet` and `omsWallet.wallet.session` are read synchronously from the native SDK, so they are current as soon as a sign-in or wallet change returns. They return the same frozen objects until the active wallet or session changes. `onSessionChange` calls your listener after every change and returns a function that removes it:
 
 ```ts
 const unsubscribe = omsWallet.wallet.onSessionChange((event) => {

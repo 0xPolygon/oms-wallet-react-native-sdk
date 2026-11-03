@@ -604,6 +604,27 @@ test('reads the session synchronously and keeps the same objects until it change
   assert.equal(oms.wallet.activeWallet.id, 'wallet-2');
 });
 
+test('returns frozen session snapshots', () => {
+  const state = {
+    activeWallet: wallet('wallet-1'),
+    session: {
+      expiresAt: '2026-06-17T00:00:00.000Z',
+      auth: { type: 'email', email: 'user@example.com' },
+    },
+  };
+  const { client } = loadClient({ readSession: () => state });
+  const oms = createOms(client);
+
+  assert.equal(Reflect.set(oms.wallet.activeWallet, 'address', '0x1'), false);
+  assert.equal(Reflect.set(oms.wallet.session, 'expiresAt', 'changed'), false);
+  assert.equal(
+    Reflect.set(oms.wallet.session.auth, 'email', 'changed@example.com'),
+    false
+  );
+  assert.equal(oms.wallet.activeWallet.address, wallet('wallet-1').address);
+  assert.equal(oms.wallet.session.auth.email, 'user@example.com');
+});
+
 test('returns a function from onSessionChange that removes the listener', () => {
   const { client, native } = loadClient();
   const oms = createOms(client);

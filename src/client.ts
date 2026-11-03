@@ -316,12 +316,18 @@ function readSessionSnapshot(owner: OMSWallet): SessionSnapshot {
       activeWallet:
         state.activeWallet == null
           ? undefined
-          : hydrateWalletAccount(state.activeWallet),
-      session:
-        state.session == null ? undefined : hydrateSession(state.session),
+          : Object.freeze(hydrateWalletAccount(state.activeWallet)),
+      session: state.session == null ? undefined : freezeSession(state.session),
     };
   }
   return sessionSnapshot;
+}
+
+// Frozen, so a caller cannot change the shared snapshot that later reads return.
+function freezeSession(session: OmsNativeSession): OMSWalletSession {
+  const hydrated = hydrateSession(session);
+  Object.freeze(hydrated.auth);
+  return Object.freeze(hydrated);
 }
 
 function resetExpiredChangeReplay(owner: OMSWallet) {
@@ -1203,9 +1209,10 @@ export class OMSWallet {
   public readonly indexer: OMSIndexerClient;
 
   /**
-   * Creates the native client synchronously, restoring a saved session. Throws
-   * `OMSWalletError` when the client cannot be created, for example for an
-   * invalid publishable key. A new instance replaces the previous one.
+   * Creates the native client synchronously and restores a saved session when
+   * the device can read it. Throws `OMSWalletError` when the client cannot be
+   * created, for example for an invalid publishable key. A new instance
+   * replaces the previous one.
    */
   constructor(config: OMSWalletParams) {
     ensureSessionChangeListener();
@@ -1239,7 +1246,7 @@ export class OMSWalletClient {
    * The active wallet, or `undefined` when signed out or while a manual
    * wallet selection is pending. Read synchronously from the native SDK, so it
    * is current right after a sign-in or wallet change returns. Returns the same
-   * object until the active wallet or session changes.
+   * frozen object until the active wallet or session changes.
    */
   get activeWallet(): WalletAccount | undefined {
     return readSessionSnapshot(this.owner).activeWallet;
@@ -1247,7 +1254,7 @@ export class OMSWalletClient {
 
   /**
    * The active session; defined exactly when `activeWallet` is. Returns the
-   * same object until the active wallet or session changes.
+   * same frozen object until the active wallet or session changes.
    */
   get session(): OMSWalletSession | undefined {
     return readSessionSnapshot(this.owner).session;

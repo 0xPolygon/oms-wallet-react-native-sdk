@@ -11,9 +11,10 @@ export declare class OMSWallet {
     readonly wallet: OMSWalletClient;
     readonly indexer: OMSIndexerClient;
     /**
-     * Creates the native client synchronously, restoring a saved session. Throws
-     * `OMSWalletError` when the client cannot be created, for example for an
-     * invalid publishable key. A new instance replaces the previous one.
+     * Creates the native client synchronously and restores a saved session when
+     * the device can read it. Throws `OMSWalletError` when the client cannot be
+     * created, for example for an invalid publishable key. A new instance
+     * replaces the previous one.
      */
     constructor(config: OMSWalletParams);
 }
@@ -34,7 +35,7 @@ export type OMSWalletParams = {
 The active wallet, or `undefined` when signed out or while a manual
 wallet selection is pending. Read synchronously from the native SDK, so it
 is current right after a sign-in or wallet change returns. Returns the same
-object until the active wallet or session changes.
+frozen object until the active wallet or session changes.
 
 ```ts
 get activeWallet(): WalletAccount | undefined;
@@ -43,7 +44,7 @@ get activeWallet(): WalletAccount | undefined;
 ### `OMSWalletClient.session`
 
 The active session; defined exactly when `activeWallet` is. Returns the
-same object until the active wallet or session changes.
+same frozen object until the active wallet or session changes.
 
 ```ts
 get session(): OMSWalletSession | undefined;
