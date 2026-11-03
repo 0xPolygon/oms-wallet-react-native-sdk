@@ -20,8 +20,11 @@ import {
 import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 import {
   OMSWallet,
+  OMSWalletError,
   Networks,
   OmsRelayOidcProviders,
+  SolanaNetworks,
+  TronNetworks,
   DEFAULT_SESSION_LIFETIME_SECONDS,
   type OMSWalletExpiredSession,
   type OMSWalletSession,
@@ -32,8 +35,11 @@ import {
   type Network,
   type OmsRelayOidcProvider,
   type PendingWalletSelection,
+  type SolanaNetwork,
+  type TronNetwork,
   type WalletAccount,
   type WalletActivationResult,
+  type WalletType,
 } from '@polygonlabs/oms-wallet-react-native';
 import GoogleIdTokenAuth from '../specs/NativeGoogleIdTokenAuth';
 
@@ -51,11 +57,13 @@ const PREFERRED_NETWORK_ORDER = ['80002', '137'];
 /** The wallet session as the demo shows it. */
 type DemoSessionState = {
   walletAddress: string | undefined;
+  walletType: WalletType | undefined;
   expiresAt: string | undefined;
   auth: OMSWalletSessionAuth | undefined;
 };
 const SIGNED_OUT_SESSION: DemoSessionState = {
   walletAddress: undefined,
+  walletType: undefined,
   expiresAt: undefined,
   auth: undefined,
 };
@@ -69,6 +77,7 @@ function demoSessionState(
   }
   return {
     walletAddress: activeWallet.address,
+    walletType: activeWallet.type,
     expiresAt: session.expiresAt,
     auth: session.auth,
   };
@@ -428,6 +437,7 @@ export default function App() {
   const [transactionStatus, setTransactionStatus] = useState(
     'Transaction status: waiting to send.'
   );
+  const [walletTab, setWalletTab] = useState<WalletType>('ethereum');
   const [networkPickerVisible, setNetworkPickerVisible] = useState(false);
   const [logLines, setLogLines] = useState(['Ready.']);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -605,7 +615,11 @@ export default function App() {
       setSession(
         nextSession.walletAddress
           ? nextSession
-          : { ...SIGNED_OUT_SESSION, walletAddress: address }
+          : {
+              ...SIGNED_OUT_SESSION,
+              walletAddress: address,
+              walletType: result.wallet.type,
+            }
       );
       setAuthStatus('Login complete');
       setSignatureStatus('Signature status: ready to sign.');
@@ -752,6 +766,7 @@ export default function App() {
 
   const walletAddress = session.walletAddress;
   const isSignedIn = walletAddress != null;
+  const activeWalletType = session.walletType ?? 'ethereum';
   const isBusy = loadingAction != null;
 
   const requestEmailCode = () => {
@@ -1055,6 +1070,21 @@ export default function App() {
     );
   };
 
+  // Uses an existing wallet of the type, or creates one, and activates it.
+  const activateWalletType = (type: WalletType) => {
+    runAction(`Activate ${WALLET_TYPE_LABELS[type]} wallet`, async () => {
+      const wallets = await omsWallet.wallet.listWallets();
+      const existing = wallets.find((wallet) => wallet.type === type);
+      const result = existing
+        ? await omsWallet.wallet.useWallet(existing.id)
+        : await omsWallet.wallet.createWallet({ walletType: type });
+      await refreshSession();
+      appendLog(
+        `${existing ? 'Using' : 'Created'} ${WALLET_TYPE_LABELS[type]} wallet ${result.wallet.address}`
+      );
+    });
+  };
+
   const openExplorer = () => {
     if (!lastTransactionHash || !selectedNetwork) return;
     Linking.openURL(explorerUrlFor(selectedNetwork, lastTransactionHash));
@@ -1276,90 +1306,139 @@ export default function App() {
                       value={formatSessionExpiration(session.expiresAt)}
                     />
                   </View>
-                  <Text style={styles.fieldLabel}>Network</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isBusy || networks.length === 0}
-                    onPress={() => setNetworkPickerVisible(true)}
-                    style={({ pressed }) => [
-                      styles.networkPickerButton,
-                      (isBusy || networks.length === 0) &&
-                        styles.buttonDisabled,
-                      pressed && !isBusy && styles.buttonPressed,
-                    ]}
-                  >
-                    <View style={styles.networkPickerText}>
-                      <Text style={styles.networkPickerTitle}>
-                        {selectedNetwork?.displayName ?? 'No network'}
-                      </Text>
-                      <Text style={styles.networkPickerSubtitle}>
-                        {selectedNetwork
-                          ? `Chain ${selectedNetwork.id} · ${selectedNetwork.nativeTokenSymbol}`
-                          : 'Supported networks unavailable'}
-                      </Text>
-                    </View>
-                    <Text style={styles.networkPickerAction}>Change</Text>
-                  </Pressable>
+                  <Text style={styles.fieldLabel}>Wallet type</Text>
+                  <View style={styles.row}>
+                    {WALLET_TYPES.map((type) => (
+                      <DemoButton
+                        key={type}
+                        disabled={isBusy}
+                        label={WALLET_TYPE_LABELS[type]}
+                        onPress={() => setWalletTab(type)}
+                        style={styles.rowButton}
+                        variant={walletTab === type ? 'primary' : 'outline'}
+                      />
+                    ))}
+                  </View>
                 </Card>
 
-                <Card title="Signature">
-                  <Field
-                    label="Message to sign"
-                    multiline
-                    onChangeText={setMessage}
-                    value={message}
-                  />
-                  <View style={styles.row}>
+                {walletTab !== activeWalletType ? (
+                  <Card title={`${WALLET_TYPE_LABELS[walletTab]} wallet`}>
+                    <Text style={styles.status}>
+                      The active wallet is{' '}
+                      {WALLET_TYPE_LABELS[activeWalletType]}. Use your{' '}
+                      {WALLET_TYPE_LABELS[walletTab]} wallet, or create one if
+                      you have none.
+                    </Text>
                     <DemoButton
                       disabled={isBusy}
-                      label="Sign Message"
-                      onPress={signCurrentMessage}
-                      style={styles.rowButton}
+                      label={`Use ${WALLET_TYPE_LABELS[walletTab]} wallet`}
+                      onPress={() => activateWalletType(walletTab)}
+                      style={styles.fullWidthButton}
                     />
-                    <DemoButton
-                      disabled={isBusy || !lastSignature}
-                      label="Verify Signature"
-                      onPress={verifyLastSignature}
-                      style={styles.rowButton}
-                      variant="outline"
-                    />
-                  </View>
-                  <Text selectable style={styles.mono}>
-                    Last signature: {lastSignature ?? 'none'}
-                  </Text>
-                  <Text style={styles.status}>{signatureStatus}</Text>
-                </Card>
+                  </Card>
+                ) : null}
 
-                <Card title="Transaction">
-                  <Field
-                    label="Transaction destination"
-                    onChangeText={setTransactionTo}
-                    value={transactionTo}
+                {walletTab === activeWalletType && walletTab !== 'ethereum' ? (
+                  <ChainPanel
+                    key={`${walletTab}:${walletAddress}`}
+                    appendLog={appendLog}
+                    chain={walletTab}
+                    isBusy={isBusy}
+                    omsWallet={omsWallet}
+                    runAction={runAction}
+                    selectFeeOption={selectFeeOption}
+                    walletAddress={walletAddress}
                   />
-                  <Field
-                    keyboardType="decimal-pad"
-                    label="Transaction value"
-                    onChangeText={setTransactionValue}
-                    value={transactionValue}
-                  />
-                  <DemoButton
-                    disabled={isBusy}
-                    label="Send Transaction"
-                    onPress={sendCurrentTransaction}
-                    style={styles.fullWidthButton}
-                  />
-                  <Text selectable style={styles.mono}>
-                    Last tx hash: {lastTransactionHash ?? 'none'}
-                  </Text>
-                  <Text style={styles.status}>{transactionStatus}</Text>
-                  <DemoButton
-                    disabled={isBusy || !lastTransactionHash}
-                    label="Open Tx In Explorer"
-                    onPress={openExplorer}
-                    style={styles.fullWidthButton}
-                    variant="outline"
-                  />
-                </Card>
+                ) : null}
+
+                {walletTab === 'ethereum' && activeWalletType === 'ethereum' ? (
+                  <>
+                    <Card title="Network">
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={isBusy || networks.length === 0}
+                        onPress={() => setNetworkPickerVisible(true)}
+                        style={({ pressed }) => [
+                          styles.networkPickerButton,
+                          (isBusy || networks.length === 0) &&
+                            styles.buttonDisabled,
+                          pressed && !isBusy && styles.buttonPressed,
+                        ]}
+                      >
+                        <View style={styles.networkPickerText}>
+                          <Text style={styles.networkPickerTitle}>
+                            {selectedNetwork?.displayName ?? 'No network'}
+                          </Text>
+                          <Text style={styles.networkPickerSubtitle}>
+                            {selectedNetwork
+                              ? `Chain ${selectedNetwork.id} · ${selectedNetwork.nativeTokenSymbol}`
+                              : 'Supported networks unavailable'}
+                          </Text>
+                        </View>
+                        <Text style={styles.networkPickerAction}>Change</Text>
+                      </Pressable>
+                    </Card>
+
+                    <Card title="Signature">
+                      <Field
+                        label="Message to sign"
+                        multiline
+                        onChangeText={setMessage}
+                        value={message}
+                      />
+                      <View style={styles.row}>
+                        <DemoButton
+                          disabled={isBusy}
+                          label="Sign Message"
+                          onPress={signCurrentMessage}
+                          style={styles.rowButton}
+                        />
+                        <DemoButton
+                          disabled={isBusy || !lastSignature}
+                          label="Verify Signature"
+                          onPress={verifyLastSignature}
+                          style={styles.rowButton}
+                          variant="outline"
+                        />
+                      </View>
+                      <Text selectable style={styles.mono}>
+                        Last signature: {lastSignature ?? 'none'}
+                      </Text>
+                      <Text style={styles.status}>{signatureStatus}</Text>
+                    </Card>
+
+                    <Card title="Transaction">
+                      <Field
+                        label="Transaction destination"
+                        onChangeText={setTransactionTo}
+                        value={transactionTo}
+                      />
+                      <Field
+                        keyboardType="decimal-pad"
+                        label="Transaction value"
+                        onChangeText={setTransactionValue}
+                        value={transactionValue}
+                      />
+                      <DemoButton
+                        disabled={isBusy}
+                        label="Send Transaction"
+                        onPress={sendCurrentTransaction}
+                        style={styles.fullWidthButton}
+                      />
+                      <Text selectable style={styles.mono}>
+                        Last tx hash: {lastTransactionHash ?? 'none'}
+                      </Text>
+                      <Text style={styles.status}>{transactionStatus}</Text>
+                      <DemoButton
+                        disabled={isBusy || !lastTransactionHash}
+                        label="Open Tx In Explorer"
+                        onPress={openExplorer}
+                        style={styles.fullWidthButton}
+                        variant="outline"
+                      />
+                    </Card>
+                  </>
+                ) : null}
               </>
             )}
 
@@ -1539,6 +1618,13 @@ function decimalToBaseUnits(value: string, decimals: number): string {
 }
 
 function describeError(error: unknown): string {
+  if (error instanceof OMSWalletError) {
+    const upstream = error.upstreamError;
+    const reason = upstream?.cause ?? upstream?.message ?? upstream?.name;
+    return reason
+      ? `${error.code}: ${error.message} (${reason})`
+      : `${error.code}: ${error.message}`;
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -1551,6 +1637,351 @@ function explorerUrlFor(network: Network, txHash: string): string {
 
 function isDemoOidcRedirectUrl(url: string): boolean {
   return url.startsWith(DEMO_OIDC_REDIRECT_URI);
+}
+
+const WALLET_TYPES: WalletType[] = ['ethereum', 'solana', 'tron'];
+const WALLET_TYPE_LABELS: Record<WalletType, string> = {
+  ethereum: 'EVM',
+  solana: 'Solana',
+  tron: 'Tron',
+};
+
+type ChainNetworkConfig = {
+  label: string;
+  network: SolanaNetwork | TronNetwork;
+  explorerTxUrl: (hash: string) => string;
+  /** TRC-20 USDT, for testing a Tron contract call. */
+  usdtContract?: string;
+};
+
+type ChainConfig = {
+  symbol: string;
+  decimals: number;
+  testnet: ChainNetworkConfig;
+  mainnet: ChainNetworkConfig;
+};
+
+const CHAIN_CONFIGS: Record<'solana' | 'tron', ChainConfig> = {
+  solana: {
+    symbol: 'SOL',
+    decimals: 9,
+    testnet: {
+      label: 'Devnet',
+      network: SolanaNetworks.devnet,
+      explorerTxUrl: (hash) =>
+        `https://explorer.solana.com/tx/${hash}?cluster=devnet`,
+    },
+    mainnet: {
+      label: 'Mainnet',
+      network: SolanaNetworks.mainnet,
+      explorerTxUrl: (hash) => `https://explorer.solana.com/tx/${hash}`,
+    },
+  },
+  tron: {
+    symbol: 'TRX',
+    decimals: 6,
+    testnet: {
+      label: 'Nile',
+      network: TronNetworks.nile,
+      explorerTxUrl: (hash) =>
+        `https://nile.tronscan.org/#/transaction/${hash}`,
+      usdtContract: 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf',
+    },
+    mainnet: {
+      label: 'Mainnet',
+      network: TronNetworks.mainnet,
+      explorerTxUrl: (hash) => `https://tronscan.org/#/transaction/${hash}`,
+      usdtContract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+    },
+  },
+};
+
+const USDT_DECIMALS = 6;
+
+// Solana and Tron tools: balances, message signing, and transfers.
+function ChainPanel({
+  chain,
+  omsWallet,
+  walletAddress,
+  isBusy,
+  runAction,
+  selectFeeOption,
+  appendLog,
+}: {
+  chain: 'solana' | 'tron';
+  omsWallet: OMSWallet;
+  walletAddress: string;
+  isBusy: boolean;
+  runAction: (
+    label: string,
+    action: () => Promise<void>,
+    onFailure?: (error: unknown) => void
+  ) => Promise<void>;
+  selectFeeOption: (
+    feeOptions: FeeOptionWithBalance[]
+  ) => Promise<FeeOptionSelection | undefined>;
+  appendLog: (message: string) => void;
+}) {
+  const config = CHAIN_CONFIGS[chain];
+  const label = WALLET_TYPE_LABELS[chain];
+  const [useMainnet, setUseMainnet] = useState(false);
+  const networkConfig = useMainnet ? config.mainnet : config.testnet;
+  const [balances, setBalances] = useState('Balances: not loaded.');
+  const [message, setMessage] = useState('test');
+  const [lastSignedMessage, setLastSignedMessage] = useState<string | null>(
+    null
+  );
+  const [lastSignature, setLastSignature] = useState<string | null>(null);
+  const [signatureStatus, setSignatureStatus] = useState(
+    'Signature status: ready to sign.'
+  );
+  const [sendUsdt, setSendUsdt] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('0.001');
+  const [lastTransactionHash, setLastTransactionHash] = useState<string | null>(
+    null
+  );
+  const [transactionStatus, setTransactionStatus] = useState(
+    'Transaction status: ready to send.'
+  );
+  const assetSymbol = sendUsdt ? 'USDT' : config.symbol;
+
+  const loadBalances = () => {
+    runAction(`Load ${label} balances`, async () => {
+      const result =
+        chain === 'solana'
+          ? await omsWallet.indexer.getSolanaBalances({
+              walletAddress,
+              networks: [networkConfig.network as SolanaNetwork],
+            })
+          : await omsWallet.indexer.getTronBalances({
+              walletAddress,
+              networks: [networkConfig.network as TronNetwork],
+              contractAddresses: networkConfig.usdtContract
+                ? [networkConfig.usdtContract]
+                : undefined,
+            });
+      const error = result.errors[0];
+      if (error) {
+        throw new Error(`${networkConfig.label}: ${error.reason}`);
+      }
+      const lines = result.balances.map((balance) => {
+        const token =
+          balance.assetType === 'native'
+            ? ''
+            : 'mintAddress' in balance
+              ? balance.mintAddress
+              : balance.contractAddress;
+        return `${balance.formattedBalance} ${balance.symbol || token}`;
+      });
+      setBalances(
+        lines.length > 0
+          ? `Balances on ${networkConfig.label}:\n${lines.join('\n')}`
+          : `Balances on ${networkConfig.label}: none.`
+      );
+      appendLog(`${label} balances loaded on ${networkConfig.label}`);
+    });
+  };
+
+  const signCurrentMessage = () => {
+    runAction(
+      `Sign ${label} message`,
+      async () => {
+        const nextMessage = requireText(message, 'Message');
+        setSignatureStatus('Signature status: signing in progress...');
+        const signature =
+          chain === 'solana'
+            ? await omsWallet.wallet.signSolanaMessage({ message: nextMessage })
+            : await omsWallet.wallet.signTronMessage({ message: nextMessage });
+        setLastSignedMessage(nextMessage);
+        setLastSignature(signature);
+        setSignatureStatus('Signature status: signed. Ready to verify.');
+        appendLog(`Signed ${label} message`);
+      },
+      () => setSignatureStatus('Signature status: signing failed.')
+    );
+  };
+
+  const verifyLastSignature = () => {
+    runAction(
+      `Verify ${label} signature`,
+      async () => {
+        const params = {
+          message: requireText(lastSignedMessage, 'Signed message'),
+          signature: requireText(lastSignature, 'Signature'),
+        };
+        setSignatureStatus('Signature status: verification in progress...');
+        const isValid =
+          chain === 'solana'
+            ? await omsWallet.wallet.isValidSolanaMessageSignature(params)
+            : await omsWallet.wallet.isValidTronMessageSignature(params);
+        setSignatureStatus(
+          isValid ? 'Signature status: valid.' : 'Signature status: invalid.'
+        );
+        appendLog(`Verify ${label} signature => isValid=${String(isValid)}`);
+      },
+      () => setSignatureStatus('Signature status: verification failed.')
+    );
+  };
+
+  const sendTransfer = () => {
+    runAction(
+      `Send ${assetSymbol} on ${networkConfig.label}`,
+      async () => {
+        const to = requireText(recipient, 'Recipient');
+        setTransactionStatus('Transaction status: sending in progress...');
+        let result;
+        if (chain === 'solana') {
+          result = await omsWallet.wallet.sendSolanaTransfer({
+            network: networkConfig.network as SolanaNetwork,
+            asset: 'SOL',
+            to,
+            amount: decimalToBaseUnits(amount, config.decimals),
+            selectFeeOption,
+          });
+        } else if (sendUsdt) {
+          // TRC-20 transfers are contract calls; the wallet service ABI-encodes the arguments.
+          result = await omsWallet.wallet.callTronContract({
+            network: networkConfig.network as TronNetwork,
+            contractAddress: requireText(
+              networkConfig.usdtContract ?? null,
+              'USDT contract'
+            ),
+            method: 'transfer',
+            args: [
+              { type: 'address', value: to },
+              {
+                type: 'uint256',
+                value: decimalToBaseUnits(amount, USDT_DECIMALS),
+              },
+            ],
+            selectFeeOption,
+          });
+        } else {
+          result = await omsWallet.wallet.sendTronTransaction({
+            network: networkConfig.network as TronNetwork,
+            to,
+            value: decimalToBaseUnits(amount, config.decimals),
+            selectFeeOption,
+          });
+        }
+        setLastTransactionHash(result.txnHash ?? null);
+        setTransactionStatus(`Transaction status: ${result.status}.`);
+        appendLog(
+          result.txnHash
+            ? `${label} transaction hash=${result.txnHash}`
+            : `${label} transaction ${result.txnId} status=${result.status}; hash pending`
+        );
+      },
+      () => setTransactionStatus('Transaction status: send failed.')
+    );
+  };
+
+  return (
+    <>
+      <Card title={`${label} network`}>
+        <View style={styles.row}>
+          {[false, true].map((mainnet) => (
+            <DemoButton
+              key={String(mainnet)}
+              disabled={isBusy}
+              label={mainnet ? config.mainnet.label : config.testnet.label}
+              onPress={() => setUseMainnet(mainnet)}
+              style={styles.rowButton}
+              variant={useMainnet === mainnet ? 'primary' : 'outline'}
+            />
+          ))}
+        </View>
+        <Text selectable style={styles.mono}>
+          {balances}
+        </Text>
+        <DemoButton
+          disabled={isBusy}
+          label="Load Balances"
+          onPress={loadBalances}
+          style={styles.fullWidthButton}
+          variant="outline"
+        />
+      </Card>
+
+      <Card title={`${label} signature`}>
+        <Field
+          label="Message to sign"
+          multiline
+          onChangeText={setMessage}
+          value={message}
+        />
+        <View style={styles.row}>
+          <DemoButton
+            disabled={isBusy}
+            label="Sign Message"
+            onPress={signCurrentMessage}
+            style={styles.rowButton}
+          />
+          <DemoButton
+            disabled={isBusy || !lastSignature}
+            label="Verify Signature"
+            onPress={verifyLastSignature}
+            style={styles.rowButton}
+            variant="outline"
+          />
+        </View>
+        <Text selectable style={styles.mono}>
+          Last signature: {lastSignature ?? 'none'}
+        </Text>
+        <Text style={styles.status}>{signatureStatus}</Text>
+      </Card>
+
+      <Card title={`${label} transfer`}>
+        {chain === 'tron' ? (
+          <View style={styles.row}>
+            {[false, true].map((usdt) => (
+              <DemoButton
+                key={String(usdt)}
+                disabled={isBusy}
+                label={usdt ? 'USDT (TRC-20)' : 'TRX'}
+                onPress={() => setSendUsdt(usdt)}
+                style={styles.rowButton}
+                variant={sendUsdt === usdt ? 'primary' : 'outline'}
+              />
+            ))}
+          </View>
+        ) : null}
+        <Field
+          label="Recipient"
+          onChangeText={setRecipient}
+          value={recipient}
+        />
+        <Field
+          keyboardType="decimal-pad"
+          label={`Amount (${assetSymbol})`}
+          onChangeText={setAmount}
+          value={amount}
+        />
+        <DemoButton
+          disabled={isBusy}
+          label={`Send on ${networkConfig.label}`}
+          onPress={sendTransfer}
+          style={styles.fullWidthButton}
+        />
+        <Text selectable style={styles.mono}>
+          Last tx hash: {lastTransactionHash ?? 'none'}
+        </Text>
+        <Text style={styles.status}>{transactionStatus}</Text>
+        <DemoButton
+          disabled={isBusy || !lastTransactionHash}
+          label="Open Tx In Explorer"
+          onPress={() => {
+            if (lastTransactionHash) {
+              Linking.openURL(networkConfig.explorerTxUrl(lastTransactionHash));
+            }
+          }}
+          style={styles.fullWidthButton}
+          variant="outline"
+        />
+      </Card>
+    </>
+  );
 }
 
 const styles = StyleSheet.create({
