@@ -168,11 +168,13 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
   `compatibility-tests/expo-min`. CI builds that fixture and `examples/expo-example` (the current
   Expo SDK) natively on Android and iOS.
 - The fixture's version lines never move automatically: Dependabot proposes only patch updates for
-  `expo`, `react`, and `react-native` there, which are fine to merge. Changing a version line
+  `expo`, `react`, and `react-native` there, grouped in one pull request, which are fine to merge. Changing a version line
   raises the minimum and is its own deliberate pull request that updates everything in the
   "Supported minimum" Maintenance Matrix row.
 - `examples/expo-example` tracks the latest Expo SDK through Dependabot and the post-publish Expo
-  update workflow.
+  update workflow. Dependabot skips minor and major updates of `react`, `@types/react`,
+  `react-native`, and `@babel/core` there, because the Expo SDK pins them; they move with an Expo
+  SDK upgrade (`npx expo install --fix`).
 - Do not add pull request gates that require dependencies to be the latest version.
 - `yarn check:supported-versions` (part of `yarn verify`) fails when the fixture pins, peer ranges,
   README, or Dependabot rule disagree.
