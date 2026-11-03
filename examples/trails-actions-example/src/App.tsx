@@ -1276,6 +1276,11 @@ export default function App() {
   const sessionChangeCountRef = useRef(0);
   // Whether the latest session change ended the session (expired or signed out).
   const lastChangeEndedSessionRef = useRef(false);
+  // Whether the session ended, given a read that a newer change may have discarded (null).
+  const sessionEnded = (nextSession: DemoSessionState | null) =>
+    nextSession == null
+      ? lastChangeEndedSessionRef.current
+      : nextSession.walletAddress == null;
   const handlingRedirectUrlRef = useRef<string | null>(null);
 
   const appendLog = useCallback((messageToAppend: string) => {
@@ -1418,8 +1423,8 @@ export default function App() {
                   )
                 : await result.result.pendingSelection.createAndSelectWallet();
               const nextSession = await refreshSession();
-              // A newer change ended the session during the read; its handler updated the screen.
-              if (nextSession == null && lastChangeEndedSessionRef.current) {
+              // The session ended before or during the read; the change that ended it updates the screen.
+              if (sessionEnded(nextSession)) {
                 break;
               }
               setCode('');
@@ -1431,7 +1436,7 @@ export default function App() {
               break;
             }
             const nextSession = await refreshSession();
-            if (nextSession == null && lastChangeEndedSessionRef.current) {
+            if (sessionEnded(nextSession)) {
               break;
             }
             const address =
@@ -1898,8 +1903,8 @@ export default function App() {
           code: requireText(code, 'Code'),
         });
         const nextSession = await refreshSession();
-        // A newer change ended the session during the read; its handler updated the screen.
-        if (nextSession == null && lastChangeEndedSessionRef.current) {
+        // The session ended before or during the read; the change that ended it updates the screen.
+        if (sessionEnded(nextSession)) {
           return;
         }
         clearExpiredSessionState();

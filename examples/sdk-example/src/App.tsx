@@ -616,30 +616,27 @@ export default function App() {
     return () => subscription.remove();
   }, [handleSessionChange, omsWallet]);
 
-  // Shows the activated wallet. Returns false when a session change during the
-  // read ended the session: that change is newer, and its handler already
-  // updated the screen, so this must not report a sign-in.
+  // Shows the activated wallet. Returns false when the session ended before or
+  // during the read: the change that ended it updates the screen, so this must
+  // not report a sign-in.
   const activateWallet = useCallback(
     async (result: WalletActivationResult) => {
       const nextSession = await readSessionState();
       setPendingWalletSelection(null);
       setCode('');
       setAuthStage('email');
-      if (nextSession == null && lastChangeEndedSessionRef.current) {
+      // A discarded read means a newer change arrived; it says whether the session ended.
+      const sessionEnded =
+        nextSession == null
+          ? lastChangeEndedSessionRef.current
+          : nextSession.walletAddress == null;
+      if (sessionEnded) {
         return false;
       }
       const address = nextSession?.walletAddress ?? result.wallet.address;
       clearExpiredSessionState();
       if (nextSession != null) {
-        setSession(
-          nextSession.walletAddress
-            ? nextSession
-            : {
-                ...SIGNED_OUT_SESSION,
-                walletAddress: address,
-                walletType: result.wallet.type,
-              }
-        );
+        setSession(nextSession);
       }
       setAuthStatus('Login complete');
       setSignatureStatus('Signature status: ready to sign.');
