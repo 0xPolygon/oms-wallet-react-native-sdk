@@ -1207,9 +1207,9 @@ export class OMSWalletClient {
   /**
    * Calls `listener` after every change of the active wallet or session.
    * Subscribe first, then read `getActiveWallet()` and `getSession()`, so no
-   * change is missed. A listener added while signed out first receives the
-   * last `expired` change, if a session expired since the last sign-in or
-   * sign-out.
+   * change is missed; a change that arrives during those reads is newer than
+   * what they return. A listener added while signed out first receives the
+   * last `expired` change, until a sign-in starts or the user signs out.
    */
   onSessionChange(listener: OMSWalletSessionChangeListener): EventSubscription {
     ensureSessionChangeListener();

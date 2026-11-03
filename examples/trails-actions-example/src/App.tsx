@@ -1273,6 +1273,7 @@ export default function App() {
   const [logLines, setLogLines] = useState(['Ready.']);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const handledRedirectUrlsRef = useRef(new Set<string>());
+  const sessionChangeCountRef = useRef(0);
   const handlingRedirectUrlRef = useRef<string | null>(null);
 
   const appendLog = useCallback((messageToAppend: string) => {
@@ -1295,11 +1296,20 @@ export default function App() {
     setEarnStatus('Swap and Deposit status: waiting to prepare.');
   }, []);
 
+  // Returns null when a session change arrived during the reads: that change is
+  // newer than what was read, and it already updated the screen.
+  const readSessionState = useCallback(async () => {
+    const changeCount = sessionChangeCountRef.current;
+    const activeWallet = await omsWallet.wallet.getActiveWallet();
+    const walletSession = await omsWallet.wallet.getSession();
+    return sessionChangeCountRef.current === changeCount
+      ? demoSessionState(activeWallet, walletSession)
+      : null;
+  }, [omsWallet]);
+
   const refreshSession = useCallback(async () => {
-    const nextSession = demoSessionState(
-      await omsWallet.wallet.getActiveWallet(),
-      await omsWallet.wallet.getSession()
-    );
+    const nextSession = await readSessionState();
+    if (nextSession == null) return null;
     setSession(nextSession);
     if (nextSession.walletAddress) {
       setExpiredSessionEvent(null);
@@ -1309,7 +1319,7 @@ export default function App() {
       setEarnStatus('Swap and Deposit status: ready to prepare.');
     }
     return nextSession;
-  }, [omsWallet]);
+  }, [readSessionState]);
 
   const clearExpiredSessionState = useCallback(() => {
     setExpiredSessionEvent(null);
@@ -1342,6 +1352,7 @@ export default function App() {
 
   const handleSessionChange = useCallback(
     (event: OMSWalletSessionChangeEvent) => {
+      sessionChangeCountRef.current += 1;
       if (event.reason === 'expired') {
         handleSessionExpired(event.expiredSession);
         return;
@@ -1407,13 +1418,13 @@ export default function App() {
               setAuthStage('email');
               setAuthStatus('Google redirect login complete');
               appendLog(
-                `Google redirect wallet selected: ${nextSession.walletAddress ?? activation.wallet.address}`
+                `Google redirect wallet selected: ${nextSession?.walletAddress ?? activation.wallet.address}`
               );
               break;
             }
             const nextSession = await refreshSession();
             const address =
-              nextSession.walletAddress ?? result.result.wallet.address;
+              nextSession?.walletAddress ?? result.result.wallet.address;
             setCode('');
             setAuthStage('email');
             setAuthStatus('Google redirect login complete');
@@ -1691,7 +1702,7 @@ export default function App() {
         appendLog('Polygon network is available.');
 
         const nextSession = await refreshSession();
-        if (nextSession.walletAddress) {
+        if (nextSession?.walletAddress) {
           appendLog(`Wallet ready: ${nextSession.walletAddress}`);
         }
         setSdkReady(true);
@@ -1880,7 +1891,7 @@ export default function App() {
         setCode('');
         setAuthStage('email');
         setAuthStatus('Email login complete');
-        if (nextSession.walletAddress) {
+        if (nextSession?.walletAddress) {
           appendLog(`Wallet ready: ${nextSession.walletAddress}`);
         }
       },

@@ -81,20 +81,27 @@ Automatic wallet selection is the default. Handle `walletSelection` only when an
 
 ## Keep Your UI In Sync
 
-Subscribe to session changes, then read the current state:
+Subscribe to session changes, then read the current state. The reads are asynchronous, so a change can arrive while they run; that change is newer than what was read, so keep it:
 
 ```ts
+let changes = 0;
 const subscription = omsWallet.wallet.onSessionChange((event) => {
+  changes += 1;
+  render(event.activeWallet, event.session);
   if (event.reason === 'expired') {
     showSignIn(event.expiredSession.session.auth);
   }
 });
 
+const changesBeforeRead = changes;
 const activeWallet = await omsWallet.wallet.getActiveWallet();
 const session = await omsWallet.wallet.getSession();
+if (changes === changesBeforeRead) {
+  render(activeWallet, session);
+}
 ```
 
-`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change.
+`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change, until a sign-in starts or the user signs out.
 
 ## Sessions
 
