@@ -23,16 +23,13 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
     sessionChangeEventEmitter = emitter
   }
 
-  @objc(createClientWithClientId:publishableKey:resolve:reject:)
-  public func createClient(
-    clientId: String,
-    publishableKey: String,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
+  /// Synchronous. Returns `["error": NSNull()]`, or the error a rejected promise would carry.
+  @objc(createClientWithClientId:publishableKey:)
+  public func createClient(clientId: String, publishableKey: String) -> NSDictionary {
     do {
-      clearPendingWalletSelections(clientId: clientId)
+      // Create the new client first, so a failure leaves the current one working.
       let client = try OMSWallet(publishableKey: publishableKey)
+      clearPendingWalletSelections(clientId: clientId)
       let sessionChangeObservation = client.wallet.addSessionChangeObserver { [weak self] event in
         guard let self else {
           return
@@ -45,32 +42,26 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
         ClientBox(client, sessionChangeObservation: sessionChangeObservation),
         clientId: clientId
       )
-      resolve(nil)
+      return ["error": NSNull()]
     } catch {
-      rejectError(reject, error)
+      return ["error": errorDictionary(error)]
     }
   }
 
-  @objc(getSessionWithClientId:resolve:reject:)
-  public func getSession(
-    clientId: String,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
-    do {
-      let wallet = try requireClient(clientId).wallet
-      // `session` is non-nil exactly when `activeWallet` is; read both together.
-      guard let activeWallet = wallet.activeWallet, let session = wallet.session else {
-        resolve(["activeWallet": NSNull(), "session": NSNull()])
-        return
-      }
-      resolve([
-        "activeWallet": walletDictionary(activeWallet),
-        "session": sessionDictionary(session)
-      ])
-    } catch {
-      rejectError(reject, error)
+  /// Synchronous: the client's current active wallet and session.
+  @objc(readSessionWithClientId:)
+  public func readSession(clientId: String) -> NSDictionary {
+    // `session` is non-nil exactly when `activeWallet` is; read both together.
+    guard let wallet = try? requireClient(clientId).wallet,
+          let activeWallet = wallet.activeWallet,
+          let session = wallet.session
+    else {
+      return ["activeWallet": NSNull(), "session": NSNull()]
     }
+    return [
+      "activeWallet": walletDictionary(activeWallet),
+      "session": sessionDictionary(session)
+    ]
   }
 
   @objc(startEmailAuthWithClientId:email:sessionLifetimeSeconds:resolve:reject:)
@@ -2081,18 +2072,10 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
 
   private func rejectError(_ reject: RCTPromiseRejectBlock, _ error: Error) {
     if let omsError = error as? OMSWalletError {
-      let code = omsError.code.rawValue
-      var userInfo: [String: Any] = [
-        NSLocalizedDescriptionKey: omsError.localizedDescription,
-        "code": code
-      ]
-      userInfo["operation"] = omsError.operation?.rawValue ?? NSNull()
-      userInfo["status"] = nullableNumber(omsError.status)
-      userInfo["txnId"] = omsError.txnId ?? NSNull()
-      userInfo["retryable"] = nullableBool(omsError.retryable)
-      userInfo["upstreamError"] = nullableUpstreamError(omsError.upstreamError)
+      var userInfo = omsErrorUserInfo(omsError)
+      userInfo[NSLocalizedDescriptionKey] = omsError.localizedDescription
       reject(
-        code,
+        omsError.code.rawValue,
         omsError.localizedDescription,
         NSError(domain: "OmsWalletReactNativeSdk", code: 1, userInfo: userInfo)
       )
@@ -2101,6 +2084,33 @@ public final class OmsWalletReactNativeSdkImpl: NSObject, @unchecked Sendable {
 
     let nsError = error as NSError
     reject("oms_wallet_error", nsError.localizedDescription, nsError)
+  }
+
+  /// The error a synchronous call returns, shaped like a rejected promise's error.
+  private func errorDictionary(_ error: Error) -> [String: Any] {
+    if let omsError = error as? OMSWalletError {
+      return [
+        "code": omsError.code.rawValue,
+        "message": omsError.localizedDescription,
+        "userInfo": omsErrorUserInfo(omsError)
+      ]
+    }
+    return [
+      "code": "oms_wallet_error",
+      "message": (error as NSError).localizedDescription,
+      "userInfo": [String: Any]()
+    ]
+  }
+
+  private func omsErrorUserInfo(_ omsError: OMSWalletError) -> [String: Any] {
+    [
+      "code": omsError.code.rawValue,
+      "operation": omsError.operation?.rawValue ?? NSNull(),
+      "status": nullableNumber(omsError.status),
+      "txnId": omsError.txnId ?? NSNull(),
+      "retryable": nullableBool(omsError.retryable),
+      "upstreamError": nullableUpstreamError(omsError.upstreamError)
+    ]
   }
 
   private func upstreamErrorDictionary(_ error: OMSWalletUpstreamError) -> [String: Any] {

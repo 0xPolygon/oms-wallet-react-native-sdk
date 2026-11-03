@@ -6,8 +6,9 @@ Uses version 0.4.0 of the Swift and Kotlin SDKs, with an active-wallet session A
 
 ### Breaking changes
 
-- `getActiveWallet()` replaces `getWalletAddress()`, and `getSession()` resolves to `OMSWalletSession | undefined`.
-- `onSessionChange` replaces `onSessionExpired` and reports every change of the active wallet or session.
+- The synchronous `activeWallet` and `session` properties replace `getWalletAddress()` and `getSession()`. They are current as soon as a sign-in or wallet change returns, and work with React's `useSyncExternalStore`.
+- `onSessionChange` replaces `onSessionExpired`, reports every change of the active wallet or session, and returns a function that removes the listener.
+- `new OMSWallet()` creates the native client synchronously and throws `OMSWalletError` when it cannot be created.
 - `walletAddress` was removed from `WalletActivationResult` and `CompleteAuthResult`; use `wallet.address`.
 - `importEncryptedWallet` takes `walletType` instead of `type`.
 - Users sign in once after upgrading: sessions saved by 0.3 are not restored.

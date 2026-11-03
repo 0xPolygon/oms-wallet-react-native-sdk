@@ -118,47 +118,39 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
   private val sessionChangeUnsubscribes = ConcurrentHashMap<String, () -> Unit>()
   private val clients = ConcurrentHashMap<String, OMSWallet>()
 
-  override fun createClient(
-    clientId: String,
-    publishableKey: String,
-    promise: Promise
-  ) {
+  /** Synchronous. Returns `error: null`, or the error a rejected promise would carry. */
+  override fun createClient(clientId: String, publishableKey: String): WritableMap =
     try {
-      clearPendingWalletSelections(clientId)
-      sessionChangeUnsubscribes.remove(clientId)?.invoke()
+      // Create the new client first, so a failure leaves the current one working.
       val activeClient = OMSWallet(
         context = reactApplicationContext,
         publishableKey = publishableKey
       )
+      clearPendingWalletSelections(clientId)
+      sessionChangeUnsubscribes.remove(clientId)?.invoke()
       clients[clientId] = activeClient
       sessionChangeUnsubscribes[clientId] = activeClient.wallet.onSessionChange { event ->
         emitOnSessionChange(sessionChangeEventMap(clientId, event))
       }
-      promise.resolve(null)
+      Arguments.createMap().apply { putNull("error") }
     } catch (throwable: Throwable) {
-      reject(promise, throwable)
+      Arguments.createMap().apply { putMap("error", errorMap(throwable)) }
     }
-  }
 
-  override fun getSession(clientId: String, promise: Promise) {
-    try {
-      val wallet = requireClient(clientId).wallet
-      // `session` is non-null exactly when `activeWallet` is; read both together.
-      val activeWallet = wallet.activeWallet
-      val session = wallet.session
-      promise.resolve(
-        Arguments.createMap().apply {
-          if (activeWallet == null || session == null) {
-            putNull("activeWallet")
-            putNull("session")
-          } else {
-            putMap("activeWallet", walletMap(activeWallet))
-            putMap("session", sessionMap(session))
-          }
-        }
-      )
-    } catch (throwable: Throwable) {
-      reject(promise, throwable)
+  /** Synchronous: the client's current active wallet and session. */
+  override fun readSession(clientId: String): WritableMap {
+    val wallet = clients[clientId]?.wallet
+    // `session` is non-null exactly when `activeWallet` is; read both together.
+    val activeWallet = wallet?.activeWallet
+    val session = wallet?.session
+    return Arguments.createMap().apply {
+      if (activeWallet == null || session == null) {
+        putNull("activeWallet")
+        putNull("session")
+      } else {
+        putMap("activeWallet", walletMap(activeWallet))
+        putMap("session", sessionMap(session))
+      }
     }
   }
 
@@ -2010,6 +2002,17 @@ class OmsWalletReactNativeSdkModule(reactContext: ReactApplicationContext) :
 
     val code = omsError.code.id
     promise.reject(code, omsError.message, throwable, omsError.userInfoMap(code))
+  }
+
+  /** The error a synchronous call returns, shaped like a rejected promise's error. */
+  private fun errorMap(throwable: Throwable): WritableMap {
+    val omsError = throwable as? OMSWalletException
+    val code = omsError?.code?.id ?: "oms_wallet_error"
+    return Arguments.createMap().apply {
+      putString("code", code)
+      putString("message", throwable.message ?: throwable.toString())
+      putMap("userInfo", omsError?.userInfoMap(code) ?: Arguments.createMap())
+    }
   }
 
   private fun OMSWalletException.userInfoMap(code: String): WritableMap =

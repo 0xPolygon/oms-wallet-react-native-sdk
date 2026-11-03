@@ -61,6 +61,8 @@ const omsWallet = new OMSWallet({
 });
 ```
 
+The constructor creates the native client synchronously and restores a saved session, so `omsWallet.wallet.activeWallet` is set as soon as it returns. It throws `OMSWalletError` when the client cannot be created, for example for an invalid publishable key.
+
 Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Create the instance once in its own module, as above, and import it where needed. Fast Refresh re-runs a module that exports non-component values when you edit it, so editing that module creates a new instance; reload the app after changing it.
 
 ## Authenticate With Email
@@ -81,27 +83,38 @@ Automatic wallet selection is the default. Handle `walletSelection` only when an
 
 ## Keep Your UI In Sync
 
-Subscribe to session changes, then read the current state. The reads are asynchronous, so a change can arrive while they run; that change is newer than what was read, so keep it:
+`omsWallet.wallet.activeWallet` and `omsWallet.wallet.session` are read synchronously from the native SDK, so they are current as soon as a sign-in or wallet change returns. They return the same objects until the active wallet or session changes. `onSessionChange` calls your listener after every change and returns a function that removes it:
 
 ```ts
-let changes = 0;
-const subscription = omsWallet.wallet.onSessionChange((event) => {
-  changes += 1;
+const unsubscribe = omsWallet.wallet.onSessionChange((event) => {
   render(event.activeWallet, event.session);
   if (event.reason === 'expired') {
     showSignIn(event.expiredSession.session.auth);
   }
 });
+render(omsWallet.wallet.activeWallet, omsWallet.wallet.session);
 
-const changesBeforeRead = changes;
-const activeWallet = await omsWallet.wallet.getActiveWallet();
-const session = await omsWallet.wallet.getSession();
-if (changes === changesBeforeRead) {
-  render(activeWallet, session);
-}
+// During cleanup
+unsubscribe();
 ```
 
 `reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change, until a sign-in starts or the user signs out.
+
+In React, `useSyncExternalStore` keeps a component in sync:
+
+```ts
+import { useCallback, useSyncExternalStore } from 'react';
+
+function useOMSWalletSession(wallet: OMSWallet['wallet']) {
+  const subscribe = useCallback(
+    (onChange: () => void) => wallet.onSessionChange(onChange),
+    [wallet]
+  );
+  const activeWallet = useSyncExternalStore(subscribe, () => wallet.activeWallet);
+  const session = useSyncExternalStore(subscribe, () => wallet.session);
+  return { activeWallet, session };
+}
+```
 
 ## Sessions
 
@@ -230,7 +243,7 @@ Inspect a remote credential before approval, authorize bounded smart-session gra
 ## Query The Indexer
 
 ```ts
-const activeWallet = await omsWallet.wallet.getActiveWallet();
+const activeWallet = omsWallet.wallet.activeWallet;
 
 if (activeWallet?.type === 'ethereum') {
   const balances = await omsWallet.indexer.getBalances({

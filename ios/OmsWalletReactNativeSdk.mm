@@ -33,22 +33,14 @@
   return self;
 }
 
-- (void)createClient:(NSString *)clientId
-      publishableKey:(NSString *)publishableKey
-             resolve:(RCTPromiseResolveBlock)resolve
-              reject:(RCTPromiseRejectBlock)reject
+- (NSDictionary *)createClient:(NSString *)clientId publishableKey:(NSString *)publishableKey
 {
-  [_impl createClientWithClientId:clientId
-                    publishableKey:publishableKey
-                           resolve:resolve
-                            reject:reject];
+  return [_impl createClientWithClientId:clientId publishableKey:publishableKey];
 }
 
-- (void)getSession:(NSString *)clientId
-           resolve:(RCTPromiseResolveBlock)resolve
-            reject:(RCTPromiseRejectBlock)reject
+- (NSDictionary *)readSession:(NSString *)clientId
 {
-  [_impl getSessionWithClientId:clientId resolve:resolve reject:reject];
+  return [_impl readSessionWithClientId:clientId];
 }
 
 - (void)startEmailAuth:(NSString *)clientId

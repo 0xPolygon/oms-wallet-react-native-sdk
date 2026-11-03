@@ -170,16 +170,17 @@ function loadClient(overrides = {}) {
       };
     }
   );
+  // Synchronous, like the native module.
   native.createClient = makeRecorder(
     calls,
     'createClient',
-    overrides.createClient ?? (async () => undefined)
+    overrides.createClient ?? (() => ({ error: null }))
   );
-  native.getSession = makeRecorder(
+  native.readSession = makeRecorder(
     calls,
-    'getSession',
-    overrides.getSession ??
-      (async () => ({
+    'readSession',
+    overrides.readSession ??
+      (() => ({
         activeWallet: null,
         session: null,
       }))
@@ -477,10 +478,10 @@ function emitSessionChange(native, clientId, event) {
 
 function subscribe(oms) {
   const events = [];
-  const subscription = oms.wallet.onSessionChange((event) => {
+  const unsubscribe = oms.wallet.onSessionChange((event) => {
     events.push(event);
   });
-  return { events, subscription };
+  return { events, unsubscribe };
 }
 
 async function expectReplayCleared(action) {
@@ -494,17 +495,114 @@ async function expectReplayCleared(action) {
   assert.deepEqual(events, []);
 }
 
-test('creates a native client and routes instance calls with its client id', async () => {
+test('creates a native client and routes instance calls with its client id', () => {
   const { calls, client } = loadClient();
   const oms = createOms(client);
 
-  await oms.wallet.getSession();
+  assert.equal(oms.wallet.session, undefined);
 
   assert.deepEqual(calls.createClient[0], [
     'oms-wallet',
     'test-publishable-key',
   ]);
-  assert.deepEqual(calls.getSession[0], ['oms-wallet']);
+  assert.deepEqual(calls.readSession[0], ['oms-wallet']);
+});
+
+test('throws the native client creation error from the constructor', () => {
+  let failCreation = false;
+  const { calls, client } = loadClient({
+    createClient: () =>
+      failCreation
+        ? {
+            error: {
+              code: 'OMS_VALIDATION_ERROR',
+              message: 'Invalid publishable key',
+              userInfo: {
+                code: 'OMS_VALIDATION_ERROR',
+                operation: null,
+                status: null,
+                txnId: null,
+                retryable: false,
+                upstreamError: null,
+              },
+            },
+          }
+        : { error: null },
+  });
+  const { OMSWalletError } = require(errorsModulePath);
+  const first = createOms(client);
+  failCreation = true;
+
+  assert.throws(
+    () => createOms(client),
+    (error) => {
+      assert.equal(error instanceof OMSWalletError, true);
+      assert.equal(error.code, 'OMS_VALIDATION_ERROR');
+      assert.equal(error.message, 'Invalid publishable key');
+      return true;
+    }
+  );
+  // A failed creation does not replace the working instance.
+  assert.equal(first.wallet.session, undefined);
+  assert.equal(calls.createClient.length, 2);
+});
+
+test('reads the session synchronously and keeps the same objects until it changes', () => {
+  let state = { activeWallet: null, session: null };
+  const { client } = loadClient({ readSession: () => state });
+  const oms = createOms(client);
+  const session = {
+    expiresAt: '2026-06-17T00:00:00.000Z',
+    auth: { type: 'email', email: 'user@example.com' },
+  };
+
+  assert.equal(oms.wallet.activeWallet, undefined);
+  assert.equal(oms.wallet.session, undefined);
+
+  // The native state changes before any change event arrives: the getters
+  // already return it.
+  state = { activeWallet: wallet('wallet-1'), session };
+  const activeWallet = oms.wallet.activeWallet;
+  assert.deepEqual(activeWallet, {
+    ...wallet('wallet-1'),
+    reference: undefined,
+  });
+  assert.deepEqual(oms.wallet.session, session);
+  // Same objects while nothing changes, as useSyncExternalStore requires.
+  assert.equal(oms.wallet.activeWallet, activeWallet);
+  assert.equal(oms.wallet.session, oms.wallet.session);
+
+  // The same content with keys in another order, as native dictionaries return it.
+  state = {
+    session: { auth: session.auth, expiresAt: session.expiresAt },
+    activeWallet: Object.fromEntries(
+      Object.entries(wallet('wallet-1')).reverse()
+    ),
+  };
+  assert.equal(oms.wallet.activeWallet, activeWallet);
+
+  state = { activeWallet: wallet('wallet-2'), session };
+  assert.notEqual(oms.wallet.activeWallet, activeWallet);
+  assert.equal(oms.wallet.activeWallet.id, 'wallet-2');
+});
+
+test('returns a function from onSessionChange that removes the listener', () => {
+  const { client, native } = loadClient();
+  const oms = createOms(client);
+  const { events, unsubscribe } = subscribe(oms);
+  const signedOut = {
+    reason: 'signedOut',
+    activeWallet: null,
+    session: null,
+    expiredSession: null,
+  };
+
+  emitSessionChange(native, 'oms-wallet', signedOut);
+  unsubscribe();
+  emitSessionChange(native, 'oms-wallet', signedOut);
+
+  assert.equal(typeof unsubscribe, 'function');
+  assert.equal(events.length, 1);
 });
 
 test('exposes supported network metadata aligned with native SDKs', () => {
@@ -606,7 +704,7 @@ test('normalizes native OMS errors into the public error shape', async () => {
     code: 'OMS_SESSION_MISSING',
     userInfo: {
       code: 'OMS_SESSION_MISSING',
-      operation: 'wallet.getSession',
+      operation: 'wallet.listWallets',
       status: null,
       txnId: null,
       retryable: false,
@@ -614,17 +712,17 @@ test('normalizes native OMS errors into the public error shape', async () => {
     },
   });
   const { client } = loadClient({
-    getSession: async () => {
+    listWallets: async () => {
       throw nativeError;
     },
   });
   const { OMSWalletError } = require(errorsModulePath);
   const oms = createOms(client);
 
-  await assert.rejects(oms.wallet.getSession(), (error) => {
+  await assert.rejects(oms.wallet.listWallets(), (error) => {
     assert.equal(error instanceof OMSWalletError, true);
     assert.equal(error.code, 'OMS_SESSION_MISSING');
-    assert.equal(error.operation, 'wallet.getSession');
+    assert.equal(error.operation, 'wallet.listWallets');
     assert.equal(error.retryable, false);
     assert.equal(error.status, undefined);
     assert.equal(error.txnId, undefined);
@@ -699,8 +797,8 @@ test('replaces the single native client without retaining stale subscribers', as
   const secondOms = createOms(client);
   const secondSubscriber = subscribe(secondOms);
   assert.deepEqual(secondSubscriber.events, []);
-  await assert.rejects(
-    firstOms.wallet.getSession(),
+  assert.throws(
+    () => firstOms.wallet.session,
     /This OMSWallet instance has been replaced/
   );
 
@@ -712,8 +810,8 @@ test('replaces the single native client without retaining stale subscribers', as
     ['oms-wallet', 'test-publishable-key'],
   ]);
 
-  firstSubscriber.subscription.remove();
-  secondSubscriber.subscription.remove();
+  firstSubscriber.unsubscribe();
+  secondSubscriber.unsubscribe();
 });
 
 test('clears cached session expiry when auth or session state is reset', async () => {
@@ -1063,7 +1161,7 @@ test('routes Solana signing, transfers, verification, and balances', async () =>
 test('hydrates session changes and replays only the latest expiry', async () => {
   const { client, native } = loadClient();
   const oms = createOms(client);
-  const { events, subscription } = subscribe(oms);
+  const { events, unsubscribe } = subscribe(oms);
   const activeWallet = { ...wallet(), type: 'tron', address: 'TWallet' };
   const session = {
     expiresAt: '2026-06-17T00:00:00.000Z',
@@ -1096,7 +1194,7 @@ test('hydrates session changes and replays only the latest expiry', async () => 
   ]);
   // A sign-out after the expiry means a new listener has nothing to replay.
   assert.deepEqual(subscribe(oms).events, []);
-  subscription.remove();
+  unsubscribe();
 });
 
 test('keeps a newer client listeners when an older subscription is removed', () => {
@@ -1104,7 +1202,7 @@ test('keeps a newer client listeners when an older subscription is removed', () 
   const first = subscribe(createOms(client));
   const second = subscribe(createOms(client));
 
-  first.subscription.remove();
+  first.unsubscribe();
   emitSessionChange(native, 'oms-wallet', {
     reason: 'signedOut',
     activeWallet: null,
@@ -1115,7 +1213,7 @@ test('keeps a newer client listeners when an older subscription is removed', () 
   assert.deepEqual(second.events, [
     { reason: 'signedOut', activeWallet: undefined, session: undefined },
   ]);
-  second.subscription.remove();
+  second.unsubscribe();
 });
 
 test('delivers a session change to every listener when one throws', () => {
@@ -1543,7 +1641,7 @@ test('normalizes optional native nulls at public model boundaries', async () => 
     timestamp: '2026-07-14T00:00:00.000Z',
   };
   const { client } = loadClient({
-    getSession: async () => ({
+    readSession: () => ({
       activeWallet: wallet(),
       session: {
         expiresAt: '2026-06-17T00:00:00.000Z',
@@ -1582,11 +1680,11 @@ test('normalizes optional native nulls at public model boundaries', async () => 
   const oms = createOms(client);
   const { Networks } = require(networksModulePath);
 
-  assert.deepEqual(await oms.wallet.getActiveWallet(), {
+  assert.deepEqual(oms.wallet.activeWallet, {
     ...wallet(),
     reference: undefined,
   });
-  assert.deepEqual(await oms.wallet.getSession(), {
+  assert.deepEqual(oms.wallet.session, {
     expiresAt: '2026-06-17T00:00:00.000Z',
     auth: {
       type: 'oidc',

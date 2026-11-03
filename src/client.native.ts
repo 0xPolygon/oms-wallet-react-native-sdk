@@ -260,24 +260,55 @@ const nativeClientIdValue = 'oms-wallet';
 let nextFeeOptionSelectorId = 0;
 let currentClientGeneration = 0;
 const clientGenerations = new WeakMap<OMSWallet, number>();
-const clientReadiness = new WeakMap<OMSWallet, Promise<void>>();
 
 function nativeClientId(owner: OMSWallet): string {
-  if (!clientReadiness.has(owner)) {
-    throw new Error('OMSWallet is not initialized');
-  }
   if (clientGenerations.get(owner) !== currentClientGeneration) {
     throw new Error('This OMSWallet instance has been replaced');
   }
   return nativeClientIdValue;
 }
 
-function ensureReady(owner: OMSWallet): Promise<void> {
-  const ready = clientReadiness.get(owner);
-  if (ready == null) {
-    throw new Error('OMSWallet is not initialized');
+type SessionSnapshot = {
+  key: string;
+  activeWallet: WalletAccount | undefined;
+  session: OMSWalletSession | undefined;
+};
+
+// The last session read, so the getters return the same objects until the state changes.
+let sessionSnapshot: SessionSnapshot | null = null;
+
+// A key that depends only on the content: native dictionaries do not keep key order.
+function contentKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(contentKey).join(',')}]`;
   }
-  return ready;
+  if (value != null && typeof value === 'object') {
+    const entries = Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${contentKey((value as Record<string, unknown>)[key])}`
+      );
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+function readSessionSnapshot(owner: OMSWallet): SessionSnapshot {
+  const state = OmsWalletReactNativeSdk.readSession(nativeClientId(owner));
+  const key = contentKey(state);
+  if (sessionSnapshot?.key !== key) {
+    sessionSnapshot = {
+      key,
+      activeWallet:
+        state.activeWallet == null
+          ? undefined
+          : hydrateWalletAccount(state.activeWallet),
+      session:
+        state.session == null ? undefined : hydrateSession(state.session),
+    };
+  }
+  return sessionSnapshot;
 }
 
 function resetExpiredChangeReplay(owner: OMSWallet) {
@@ -833,7 +864,6 @@ function hydratePendingWalletSelection(
       pendingSelection.claimableWallets.map(hydrateWalletAccount),
     credential: pendingSelection.credential,
     async selectWallet(walletId: string) {
-      await ensureReady(owner);
       const result =
         await OmsWalletReactNativeSdk.selectWalletForPendingSelection(
           nativeClientId(owner),
@@ -844,7 +874,6 @@ function hydratePendingWalletSelection(
       return hydrateWalletActivationResult(result);
     },
     async createAndSelectWallet(reference?: string) {
-      await ensureReady(owner);
       const result =
         await OmsWalletReactNativeSdk.createAndSelectWalletForPendingSelection(
           nativeClientId(owner),
@@ -855,7 +884,6 @@ function hydratePendingWalletSelection(
       return hydrateWalletActivationResult(result);
     },
     async claimAndSelectWallet(walletId: string) {
-      await ensureReady(owner);
       const result =
         await OmsWalletReactNativeSdk.claimAndSelectWalletForPendingSelection(
           nativeClientId(owner),
@@ -1159,20 +1187,31 @@ export class OMSWallet {
   public readonly wallet: OMSWalletClient;
   public readonly indexer: OMSIndexerClient;
 
+  /**
+   * Creates the native client synchronously, restoring a saved session. Throws
+   * `OMSWalletError` when the client cannot be created, for example for an
+   * invalid publishable key. A new instance replaces the previous one.
+   */
   constructor(config: OMSWalletParams) {
     ensureSessionChangeListener();
+    const { error } = OmsWalletReactNativeSdk.createClient(
+      nativeClientIdValue,
+      config.publishableKey
+    );
+    if (error != null) {
+      throw normalizeNativeError(
+        Object.assign(new Error(error.message), {
+          code: error.code,
+          userInfo: error.userInfo,
+        })
+      );
+    }
     currentClientGeneration += 1;
     clientGenerations.set(this, currentClientGeneration);
     feeOptionSelectors.clear();
     sessionChangeListeners.delete(nativeClientIdValue);
     latestExpiredChanges.delete(nativeClientIdValue);
-    clientReadiness.set(
-      this,
-      OmsWalletReactNativeSdk.createClient(
-        nativeClientIdValue,
-        config.publishableKey
-      )
-    );
+    sessionSnapshot = null;
     this.wallet = new OMSWalletClient(this);
     this.indexer = new OMSIndexerClient(this);
   }
@@ -1183,35 +1222,29 @@ export class OMSWalletClient {
 
   /**
    * The active wallet, or `undefined` when signed out or while a manual
-   * wallet selection is pending.
+   * wallet selection is pending. Read synchronously from the native SDK, so it
+   * is current right after a sign-in or wallet change returns. Returns the same
+   * object until the active wallet or session changes.
    */
-  async getActiveWallet(): Promise<WalletAccount | undefined> {
-    await ensureReady(this.owner);
-    const state = await OmsWalletReactNativeSdk.getSession(
-      nativeClientId(this.owner)
-    );
-    return state.activeWallet == null
-      ? undefined
-      : hydrateWalletAccount(state.activeWallet);
-  }
-
-  /** The active session; defined exactly when there is an active wallet. */
-  async getSession(): Promise<OMSWalletSession | undefined> {
-    await ensureReady(this.owner);
-    const state = await OmsWalletReactNativeSdk.getSession(
-      nativeClientId(this.owner)
-    );
-    return state.session == null ? undefined : hydrateSession(state.session);
+  get activeWallet(): WalletAccount | undefined {
+    return readSessionSnapshot(this.owner).activeWallet;
   }
 
   /**
-   * Calls `listener` after every change of the active wallet or session.
-   * Subscribe first, then read `getActiveWallet()` and `getSession()`, so no
-   * change is missed; a change that arrives during those reads is newer than
-   * what they return. A listener added while signed out first receives the
-   * last `expired` change, until a sign-in starts or the user signs out.
+   * The active session; defined exactly when `activeWallet` is. Returns the
+   * same object until the active wallet or session changes.
    */
-  onSessionChange(listener: OMSWalletSessionChangeListener): EventSubscription {
+  get session(): OMSWalletSession | undefined {
+    return readSessionSnapshot(this.owner).session;
+  }
+
+  /**
+   * Calls `listener` after every change of `activeWallet` or `session`, and
+   * returns a function that removes the listener. A listener added while
+   * signed out first receives the last `expired` change, until a sign-in
+   * starts or the user signs out.
+   */
+  onSessionChange(listener: OMSWalletSessionChangeListener): () => void {
     ensureSessionChangeListener();
     const clientId = nativeClientId(this.owner);
     let listeners = sessionChangeListeners.get(clientId);
@@ -1226,22 +1259,19 @@ export class OMSWalletClient {
       notifySessionChangeListener(listener, latestExpiredChange);
     }
 
-    return {
-      remove: () => {
-        listeners.delete(listener);
-        // A newer OMSWallet may own this client id's entry by now; leave it alone.
-        if (
-          listeners.size === 0 &&
-          sessionChangeListeners.get(clientId) === listeners
-        ) {
-          sessionChangeListeners.delete(clientId);
-        }
-      },
+    return () => {
+      listeners.delete(listener);
+      // A newer OMSWallet may own this client id's entry by now; leave it alone.
+      if (
+        listeners.size === 0 &&
+        sessionChangeListeners.get(clientId) === listeners
+      ) {
+        sessionChangeListeners.delete(clientId);
+      }
     };
   }
 
   async startEmailAuth(params: StartEmailAuthParams): Promise<void> {
-    await ensureReady(this.owner);
     resetExpiredChangeReplay(this.owner);
     return OmsWalletReactNativeSdk.startEmailAuth(
       nativeClientId(this.owner),
@@ -1256,7 +1286,6 @@ export class OMSWalletClient {
   async completeEmailAuth(
     params: CompleteEmailAuthParams
   ): Promise<CompleteAuthResult> {
-    await ensureReady(this.owner);
     const result = hydrateCompleteAuthResult(
       this.owner,
       await OmsWalletReactNativeSdk.completeEmailAuth(
@@ -1273,7 +1302,6 @@ export class OMSWalletClient {
   async signInWithOidcIdToken(
     params: SignInWithOidcIdTokenParams
   ): Promise<CompleteAuthResult> {
-    await ensureReady(this.owner);
     resetExpiredChangeReplay(this.owner);
     return hydrateCompleteAuthResult(
       this.owner,
@@ -1297,7 +1325,6 @@ export class OMSWalletClient {
   async startOidcRedirectAuth(
     params: StartOidcRedirectAuthParams
   ): Promise<StartOidcRedirectAuthResult> {
-    await ensureReady(this.owner);
     resetExpiredChangeReplay(this.owner);
     return OmsWalletReactNativeSdk.startOidcRedirectAuth(
       nativeClientId(this.owner),
@@ -1317,7 +1344,6 @@ export class OMSWalletClient {
   async handleOidcRedirectCallback(
     params: HandleOidcRedirectCallbackParams
   ): Promise<OidcRedirectAuthResult> {
-    await ensureReady(this.owner);
     const result = hydrateOidcRedirectAuthResult(
       this.owner,
       await OmsWalletReactNativeSdk.handleOidcRedirectCallback(
@@ -1340,14 +1366,12 @@ export class OMSWalletClient {
   }
 
   async listWallets(): Promise<WalletAccount[]> {
-    await ensureReady(this.owner);
     return (
       await OmsWalletReactNativeSdk.listWallets(nativeClientId(this.owner))
     ).map(hydrateWalletAccount);
   }
 
   async useWallet(walletId: string): Promise<WalletActivationResult> {
-    await ensureReady(this.owner);
     const result = await activateNativeWallet(
       nativeClientId(this.owner),
       walletId
@@ -1362,7 +1386,6 @@ export class OMSWalletClient {
    * `PendingWalletSelection.claimAndSelectWallet`.
    */
   async claimWallet(walletId: string): Promise<WalletActivationResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.claimWallet(
       nativeClientId(this.owner),
       walletId
@@ -1374,7 +1397,6 @@ export class OMSWalletClient {
   async createWallet(
     params: CreateWalletParams = {}
   ): Promise<WalletActivationResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.createWallet(
       nativeClientId(this.owner),
       params.walletType ?? null,
@@ -1387,7 +1409,6 @@ export class OMSWalletClient {
   async importWallet(
     params: ImportWalletParams
   ): Promise<WalletActivationResult> {
-    await ensureReady(this.owner);
     const privateKey = serializePrivateKey(params.privateKey);
     const result = await OmsWalletReactNativeSdk.importWallet(
       nativeClientId(this.owner),
@@ -1403,7 +1424,6 @@ export class OMSWalletClient {
   async getWalletImportRecipientKey(params: {
     cipherSuite: WalletImportCipherSuite;
   }): Promise<WalletImportRecipientKey> {
-    await ensureReady(this.owner);
     const key = await OmsWalletReactNativeSdk.getWalletImportRecipientKey(
       nativeClientId(this.owner),
       params.cipherSuite
@@ -1419,7 +1439,6 @@ export class OMSWalletClient {
   async importEncryptedWallet(
     params: ImportEncryptedWalletParams
   ): Promise<WalletActivationResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.importEncryptedWallet(
       nativeClientId(this.owner),
       params.walletType,
@@ -1434,13 +1453,11 @@ export class OMSWalletClient {
   }
 
   async signOut(): Promise<void> {
-    await ensureReady(this.owner);
     resetExpiredChangeReplay(this.owner);
     return OmsWalletReactNativeSdk.signOut(nativeClientId(this.owner));
   }
 
   async signMessage(params: SignMessageParams): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.signMessage(
       nativeClientId(this.owner),
       String(params.network.id),
@@ -1449,7 +1466,6 @@ export class OMSWalletClient {
   }
 
   async signSolanaMessage(params: SignSolanaMessageParams): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.signSolanaMessage(
       nativeClientId(this.owner),
       params.message
@@ -1457,7 +1473,6 @@ export class OMSWalletClient {
   }
 
   async signTronMessage(params: SignTronMessageParams): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.signTronMessage(
       nativeClientId(this.owner),
       params.message
@@ -1465,7 +1480,6 @@ export class OMSWalletClient {
   }
 
   async signTronTypedData(params: SignTronTypedDataParams): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.signTronTypedData(
       nativeClientId(this.owner),
       stringifyRequiredJson(params.typedData, 'typedData')
@@ -1473,7 +1487,6 @@ export class OMSWalletClient {
   }
 
   async signTypedData(params: SignTypedDataParams): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.signTypedData(
       nativeClientId(this.owner),
       String(params.network.id),
@@ -1484,7 +1497,6 @@ export class OMSWalletClient {
   async sendTransaction(
     params: SendTransactionParams
   ): Promise<SendTransactionResponse> {
-    await ensureReady(this.owner);
     return hydrateSendTransactionResponse(
       await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
         OmsWalletReactNativeSdk.sendTransaction(
@@ -1508,7 +1520,6 @@ export class OMSWalletClient {
   async callContract(
     params: CallContractParams
   ): Promise<SendTransactionResponse> {
-    await ensureReady(this.owner);
     return hydrateSendTransactionResponse(
       await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
         OmsWalletReactNativeSdk.callContract(
@@ -1532,7 +1543,6 @@ export class OMSWalletClient {
   async sendSolanaTransfer(
     params: SendSolanaTransferParams
   ): Promise<SendTransactionResponse> {
-    await ensureReady(this.owner);
     return hydrateSendTransactionResponse(
       await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
         OmsWalletReactNativeSdk.sendSolanaTransfer(
@@ -1556,7 +1566,6 @@ export class OMSWalletClient {
   async sendTronTransaction(
     params: SendTronTransactionParams
   ): Promise<SendTransactionResponse> {
-    await ensureReady(this.owner);
     return hydrateSendTransactionResponse(
       await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
         OmsWalletReactNativeSdk.sendTronTransaction(
@@ -1579,7 +1588,6 @@ export class OMSWalletClient {
   async callTronContract(
     params: CallTronContractParams
   ): Promise<SendTransactionResponse> {
-    await ensureReady(this.owner);
     return hydrateSendTransactionResponse(
       await withFeeOptionSelector(params.selectFeeOption, (selectorId) =>
         OmsWalletReactNativeSdk.callTronContract(
@@ -1602,7 +1610,6 @@ export class OMSWalletClient {
   async getTransactionStatus(
     txnId: string
   ): Promise<TransactionStatusResponse> {
-    await ensureReady(this.owner);
     return hydrateTransactionStatusResponse(
       await OmsWalletReactNativeSdk.getTransactionStatus(
         nativeClientId(this.owner),
@@ -1614,7 +1621,6 @@ export class OMSWalletClient {
   async isValidMessageSignature(
     params: IsValidMessageSignatureParams
   ): Promise<boolean> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.verifyMessageSignature(
       nativeClientId(this.owner),
       String(params.network.id),
@@ -1627,7 +1633,6 @@ export class OMSWalletClient {
   async isValidSolanaMessageSignature(
     params: IsValidSolanaMessageSignatureParams
   ): Promise<boolean> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.verifySolanaMessageSignature(
       nativeClientId(this.owner),
       params.walletAddress ?? null,
@@ -1639,7 +1644,6 @@ export class OMSWalletClient {
   async isValidTypedDataSignature(
     params: IsValidTypedDataSignatureParams
   ): Promise<boolean> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.verifyTypedDataSignature(
       nativeClientId(this.owner),
       String(params.network.id),
@@ -1652,7 +1656,6 @@ export class OMSWalletClient {
   async isValidTronMessageSignature(
     params: IsValidTronMessageSignatureParams
   ): Promise<boolean> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.verifyTronMessageSignature(
       nativeClientId(this.owner),
       params.walletAddress ?? null,
@@ -1664,7 +1667,6 @@ export class OMSWalletClient {
   async isValidTronTypedDataSignature(
     params: IsValidTronTypedDataSignatureParams
   ): Promise<boolean> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.verifyTronTypedDataSignature(
       nativeClientId(this.owner),
       params.walletAddress ?? null,
@@ -1674,7 +1676,6 @@ export class OMSWalletClient {
   }
 
   async getIdToken(params: GetIdTokenParams = {}): Promise<string> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.getIdToken(
       nativeClientId(this.owner),
       params.ttlSeconds == null ? null : String(params.ttlSeconds),
@@ -1685,7 +1686,6 @@ export class OMSWalletClient {
   async inspectRemoteCredential(params: {
     credentialId: string;
   }): Promise<RemoteCredentialMetadata> {
-    await ensureReady(this.owner);
     return hydrateRemoteCredentialMetadata(
       await OmsWalletReactNativeSdk.inspectRemoteCredential(
         nativeClientId(this.owner),
@@ -1697,7 +1697,6 @@ export class OMSWalletClient {
   async authorizeRemoteAccess(
     params: AuthorizeRemoteAccessParams
   ): Promise<AuthorizedRemoteAccess> {
-    await ensureReady(this.owner);
     const access = await OmsWalletReactNativeSdk.authorizeRemoteAccess(
       nativeClientId(this.owner),
       params.credentialId,
@@ -1710,7 +1709,6 @@ export class OMSWalletClient {
   }
 
   async listAccess(params: ListAccessParams = {}): Promise<AccessGrant[]> {
-    await ensureReady(this.owner);
     return (
       await OmsWalletReactNativeSdk.listAccess(
         nativeClientId(this.owner),
@@ -1739,7 +1737,6 @@ export class OMSWalletClient {
   async listAccessPage(
     params: ListAccessPageParams = {}
   ): Promise<AccessGrantPage> {
-    await ensureReady(this.owner);
     return hydrateAccessGrantPage(
       await OmsWalletReactNativeSdk.listAccessPage(
         nativeClientId(this.owner),
@@ -1753,7 +1750,6 @@ export class OMSWalletClient {
   async getRemoteAccessSession(params: {
     sessionId: string;
   }): Promise<RemoteAccessSession> {
-    await ensureReady(this.owner);
     const session = await OmsWalletReactNativeSdk.getRemoteAccessSession(
       nativeClientId(this.owner),
       params.sessionId
@@ -1768,7 +1764,6 @@ export class OMSWalletClient {
     sessionId: string;
     network: Network;
   }): Promise<SmartSessionGrantUsage[]> {
-    await ensureReady(this.owner);
     return (
       await OmsWalletReactNativeSdk.getRemoteAccessSessionUsage(
         nativeClientId(this.owner),
@@ -1782,7 +1777,6 @@ export class OMSWalletClient {
   }
 
   async revokeAccess(params: RevokeAccessParams): Promise<void> {
-    await ensureReady(this.owner);
     return OmsWalletReactNativeSdk.revokeAccess(
       nativeClientId(this.owner),
       params.credentialId,
@@ -1795,7 +1789,6 @@ export class OMSIndexerClient {
   constructor(private readonly owner: OMSWallet) {}
 
   async getBalances(params: GetBalancesParams): Promise<BalancesResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.getBalances(
       nativeClientId(this.owner),
       serializeIndexerParams(params)
@@ -1814,7 +1807,6 @@ export class OMSIndexerClient {
   async getTransactionHistory(
     params: GetTransactionHistoryParams
   ): Promise<TransactionHistoryResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.getTransactionHistory(
       nativeClientId(this.owner),
       serializeIndexerParams(params)
@@ -1830,7 +1822,6 @@ export class OMSIndexerClient {
   async getSolanaBalances(
     params: GetSolanaBalancesParams
   ): Promise<SolanaBalancesResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.getSolanaBalances(
       nativeClientId(this.owner),
       stringifyRequiredJson(params, 'params')
@@ -1848,7 +1839,6 @@ export class OMSIndexerClient {
   async getTronBalances(
     params: GetTronBalancesParams
   ): Promise<TronBalancesResult> {
-    await ensureReady(this.owner);
     const result = await OmsWalletReactNativeSdk.getTronBalances(
       nativeClientId(this.owner),
       stringifyRequiredJson(params, 'params')

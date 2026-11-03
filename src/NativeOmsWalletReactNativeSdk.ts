@@ -69,6 +69,17 @@ export type OmsNativeSessionState = {
   session: OmsNativeSession | null;
 };
 
+/** An error from a synchronous call, shaped like a rejected promise's error. */
+export type OmsNativeError = {
+  code: string;
+  message: string;
+  userInfo: CodegenTypes.UnsafeObject;
+};
+
+export type OmsNativeCreateClientResult = {
+  error: OmsNativeError | null;
+};
+
 export type OmsNativeExpiredSession = {
   wallet: OmsNativeWalletAccount | null;
   session: OmsNativeSession;
@@ -422,8 +433,13 @@ export interface Spec extends TurboModule {
   readonly onFeeOptionSelectionRequest: CodegenTypes.EventEmitter<OmsNativeFeeOptionSelectionRequest>;
   readonly onSessionChange: CodegenTypes.EventEmitter<OmsNativeSessionChangeEvent>;
 
-  createClient(clientId: string, publishableKey: string): Promise<void>;
-  getSession(clientId: string): Promise<OmsNativeSessionState>;
+  // Synchronous, so the native client exists when the OMSWallet constructor returns.
+  createClient(
+    clientId: string,
+    publishableKey: string
+  ): OmsNativeCreateClientResult;
+  // Synchronous: the native SDK's current active wallet and session.
+  readSession(clientId: string): OmsNativeSessionState;
   startEmailAuth(
     clientId: string,
     email: string,

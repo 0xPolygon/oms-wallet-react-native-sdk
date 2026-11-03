@@ -1,4 +1,3 @@
-import type { EventSubscription } from 'react-native';
 import type { Network } from './networks';
 import type {
   AccessGrant,
@@ -74,17 +73,15 @@ export class OMSWallet {
 }
 
 export class OMSWalletClient {
-  getActiveWallet(): Promise<WalletAccount | undefined> {
-    unsupported();
+  get activeWallet(): WalletAccount | undefined {
+    return unsupported();
   }
 
-  getSession(): Promise<OMSWalletSession | undefined> {
-    unsupported();
+  get session(): OMSWalletSession | undefined {
+    return unsupported();
   }
 
-  onSessionChange(
-    _listener: OMSWalletSessionChangeListener
-  ): EventSubscription {
+  onSessionChange(_listener: OMSWalletSessionChangeListener): () => void {
     unsupported();
   }
 

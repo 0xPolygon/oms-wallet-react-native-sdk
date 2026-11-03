@@ -18,14 +18,14 @@ The native SDKs store sessions in a new format and do not restore sessions saved
 
 ### Read the active wallet
 
-`getWalletAddress()` was removed. `getActiveWallet()` returns the active `WalletAccount`, or `undefined` when signed out. Check its `type` before passing the address to chain-specific code.
+`getWalletAddress()` was removed. Read the active `WalletAccount` from the synchronous `activeWallet` property; it is `undefined` when signed out. Check its `type` before passing the address to chain-specific code.
 
 ```ts
 // 0.3
 const address = await omsWallet.wallet.getWalletAddress();
 
 // 0.4
-const activeWallet = await omsWallet.wallet.getActiveWallet();
+const activeWallet = omsWallet.wallet.activeWallet;
 if (activeWallet?.type === 'ethereum') {
   const address = activeWallet.address;
 }
@@ -33,17 +33,23 @@ if (activeWallet?.type === 'ethereum') {
 
 `walletAddress` was also removed from `WalletActivationResult` and `CompleteAuthResult`. Use `result.wallet.address`.
 
-### `getSession()` returns `undefined` when signed out
+### The `session` property replaces `getSession()`
 
-`OMSWalletSessionState` was replaced by `OMSWalletSession`. `getSession()` now resolves to `OMSWalletSession | undefined` instead of an object whose fields were `undefined` when signed out. The session has no `walletAddress`; its `expiresAt` and `auth` are always set. It is defined exactly when there is an active wallet.
+`getSession()` was removed. Read the synchronous `session` property, an `OMSWalletSession` (replacing `OMSWalletSessionState`) or `undefined` when signed out. In 0.3, `getSession()` resolved to an object whose fields were `undefined` when signed out. The session has no `walletAddress`; its `expiresAt` and `auth` are always set. It is defined exactly when `activeWallet` is.
 
 ```ts
 // 0.3
 const email = (await omsWallet.wallet.getSession()).auth?.email;
 
 // 0.4
-const email = (await omsWallet.wallet.getSession())?.auth.email;
+const email = omsWallet.wallet.session?.auth.email;
 ```
+
+`activeWallet` and `session` are read from the native SDK, so they are current as soon as a sign-in or wallet change returns, and they return the same objects until the state changes. React components can use them with `useSyncExternalStore`; see the README.
+
+### `new OMSWallet()` throws when the client cannot be created
+
+The constructor now creates the native client synchronously. When that fails, for example for an invalid publishable key, `new OMSWallet()` throws `OMSWalletError` instead of the first call rejecting.
 
 ### `onSessionChange` replaces `onSessionExpired`
 
@@ -54,10 +60,12 @@ const email = (await omsWallet.wallet.getSession())?.auth.email;
 omsWallet.wallet.onSessionExpired(({ session }) => showSignIn(session.auth));
 
 // 0.4
-omsWallet.wallet.onSessionChange((event) => {
+const unsubscribe = omsWallet.wallet.onSessionChange((event) => {
   if (event.reason === 'expired') showSignIn(event.expiredSession.session.auth);
 });
 ```
+
+`onSessionChange` returns a function that removes the listener, instead of an `EventSubscription`: call `unsubscribe()` instead of `subscription.remove()`.
 
 As before, a listener added while signed out first receives the last `expired` change. On iOS, a saved session that becomes readable once the device is unlocked is reported as `signedIn`.
 

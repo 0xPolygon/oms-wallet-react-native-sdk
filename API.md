@@ -24,22 +24,22 @@ export type OMSWalletParams = {
 
 ## Authentication and sessions
 
-### `OMSWalletClient.getActiveWallet`
+### `OMSWalletClient.activeWallet`
 
 ```ts
-getActiveWallet(): Promise<WalletAccount | undefined>;
+get activeWallet(): WalletAccount | undefined;
 ```
 
-### `OMSWalletClient.getSession`
+### `OMSWalletClient.session`
 
 ```ts
-getSession(): Promise<OMSWalletSession | undefined>;
+get session(): OMSWalletSession | undefined;
 ```
 
 ### `OMSWalletClient.onSessionChange`
 
 ```ts
-onSessionChange(_listener: OMSWalletSessionChangeListener): EventSubscription;
+onSessionChange(_listener: OMSWalletSessionChangeListener): () => void;
 ```
 
 ### `OMSWalletClient.startEmailAuth`

@@ -22,6 +22,7 @@ import type {
   OMSWalletErrorCode,
   OMSWalletUpstreamError,
 } from '../src/errors';
+import type { OMSWallet } from '../src/index';
 
 type Assert<T extends true> = T;
 type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
@@ -132,3 +133,19 @@ export type WalletAddressAlreadyImportedCodeIsPublic = Assert<
     ? true
     : false
 >;
+
+// The session is read synchronously, and onSessionChange returns the unsubscribe
+// function, so both plug into React's useSyncExternalStore.
+export function readSessionSynchronously(
+  wallet: OMSWallet['wallet']
+): string | undefined {
+  const activeWallet: WalletAccount | undefined = wallet.activeWallet;
+  const expiresAt: string | undefined = wallet.session?.expiresAt;
+  return activeWallet?.address ?? expiresAt;
+}
+
+export function useSyncExternalStoreSubscribe(
+  wallet: OMSWallet['wallet']
+): (onStoreChange: () => void) => () => void {
+  return (onStoreChange) => wallet.onSessionChange(onStoreChange);
+}

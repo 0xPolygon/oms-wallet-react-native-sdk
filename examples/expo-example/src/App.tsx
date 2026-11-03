@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import * as WebBrowser from 'expo-web-browser';
 import type { ViewStyle } from 'react-native';
 import {
@@ -32,7 +39,6 @@ import {
   type Network,
   type PendingWalletSelection,
   type WalletAccount,
-  type WalletActivationResult,
 } from '@polygonlabs/oms-wallet-react-native';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -67,6 +73,24 @@ function demoSessionState(
     expiresAt: session.expiresAt,
     auth: session.auth,
   };
+}
+
+// The SDK's session, kept in sync: re-renders on every session change, and
+// `activeWallet` and `session` return the same objects until they change.
+function useWalletSession(wallet: OMSWallet['wallet']): DemoSessionState {
+  const subscribe = useCallback(
+    (onChange: () => void) => wallet.onSessionChange(onChange),
+    [wallet]
+  );
+  const activeWallet = useSyncExternalStore(
+    subscribe,
+    () => wallet.activeWallet
+  );
+  const walletSession = useSyncExternalStore(subscribe, () => wallet.session);
+  return useMemo(
+    () => demoSessionState(activeWallet, walletSession),
+    [activeWallet, walletSession]
+  );
 }
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
@@ -394,7 +418,7 @@ export default function App() {
   const [networks, setNetworks] = useState<Network[]>([]);
   const [selectedChainId, setSelectedChainId] = useState('80002');
   const [sdkReady, setSdkReady] = useState(false);
-  const [session, setSession] = useState<DemoSessionState>(SIGNED_OUT_SESSION);
+  const session = useWalletSession(omsWallet.wallet);
   const [authStage, setAuthStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -430,9 +454,6 @@ export default function App() {
     FeeOptionWithBalance[]
   >([]);
   const handledRedirectUrlsRef = useRef(new Set<string>());
-  const sessionChangeCountRef = useRef(0);
-  // Whether the latest session change ended the session (expired or signed out).
-  const lastChangeEndedSessionRef = useRef(false);
   const handlingRedirectUrlRef = useRef<string | null>(null);
   const feeOptionSelectionResolverRef = useRef<
     ((selection: FeeOptionSelection | undefined) => void) | null
@@ -499,29 +520,17 @@ export default function App() {
     };
   }, []);
 
-  // Returns null when a session change arrived during the reads: that change is
-  // newer than what was read, and it already updated the screen.
-  const readSessionState = useCallback(async () => {
-    const changeCount = sessionChangeCountRef.current;
-    const activeWallet = await omsWallet.wallet.getActiveWallet();
-    const walletSession = await omsWallet.wallet.getSession();
-    return sessionChangeCountRef.current === changeCount
-      ? demoSessionState(activeWallet, walletSession)
-      : null;
-  }, [omsWallet]);
-
-  const refreshSession = useCallback(async () => {
-    const nextSession = await readSessionState();
-    if (nextSession == null) return null;
-    setSession(nextSession);
-    if (nextSession.walletAddress) {
+  // Shows a session restored at startup. Returns its wallet address, if any.
+  const showRestoredSession = useCallback(() => {
+    const activeWallet = omsWallet.wallet.activeWallet;
+    if (activeWallet) {
       setExpiredSessionEvent(null);
       setAuthStatus('Restored persisted wallet session');
       setSignatureStatus('Signature status: ready to sign.');
       setTransactionStatus('Transaction status: ready to send.');
     }
-    return nextSession;
-  }, [readSessionState]);
+    return activeWallet?.address;
+  }, [omsWallet]);
 
   const runAction = useCallback(
     async (
@@ -557,7 +566,6 @@ export default function App() {
       const emailHint = expiredSessionEmail(event);
 
       setExpiredSessionEvent(event);
-      setSession(SIGNED_OUT_SESSION);
       setPendingWalletSelection(null);
       setCode('');
       setAuthStage('email');
@@ -581,56 +589,40 @@ export default function App() {
     [appendLog]
   );
 
+  // The wallet and session on screen come from useWalletSession; this only
+  // shows the sign-in prompt when a session expires.
   const handleSessionChange = useCallback(
     (event: OMSWalletSessionChangeEvent) => {
-      sessionChangeCountRef.current += 1;
-      lastChangeEndedSessionRef.current =
-        event.reason === 'expired' || event.reason === 'signedOut';
       if (event.reason === 'expired') {
         handleSessionExpired(event.expiredSession);
-        return;
       }
-      setSession(demoSessionState(event.activeWallet, event.session));
     },
     [handleSessionExpired]
   );
 
-  // Subscribe before the first session read, so no change is missed.
-  useEffect(() => {
-    const subscription = omsWallet.wallet.onSessionChange(handleSessionChange);
-    return () => subscription.remove();
-  }, [handleSessionChange, omsWallet]);
-
-  // Shows the activated wallet. Returns false when the session ended before or
-  // during the read: the change that ended it updates the screen, so this must
-  // not report a sign-in.
-  const activateWallet = useCallback(
-    async (result: WalletActivationResult) => {
-      const nextSession = await readSessionState();
-      setPendingWalletSelection(null);
-      setCode('');
-      setAuthStage('email');
-      // A discarded read means a newer change arrived; it says whether the session ended.
-      const sessionEnded =
-        nextSession == null
-          ? lastChangeEndedSessionRef.current
-          : nextSession.walletAddress == null;
-      if (sessionEnded) {
-        return false;
-      }
-      const address = nextSession?.walletAddress ?? result.wallet.address;
-      clearExpiredSessionState();
-      if (nextSession != null) {
-        setSession(nextSession);
-      }
-      setAuthStatus('Email login complete');
-      setSignatureStatus('Signature status: ready to sign.');
-      setTransactionStatus('Transaction status: ready to send.');
-      appendLog(`Wallet ready: ${address}`);
-      return true;
-    },
-    [appendLog, clearExpiredSessionState, readSessionState]
+  useEffect(
+    () => omsWallet.wallet.onSessionChange(handleSessionChange),
+    [handleSessionChange, omsWallet]
   );
+
+  // Called after a sign-in or wallet selection returns. Returns false when the
+  // session already ended: its expiry change shows the sign-in prompt instead.
+  const activateWallet = useCallback(() => {
+    setPendingWalletSelection(null);
+    setCode('');
+    setAuthStage('email');
+    // Read synchronously: current as soon as the sign-in returns.
+    const activeWallet = omsWallet.wallet.activeWallet;
+    if (activeWallet == null) {
+      return false;
+    }
+    clearExpiredSessionState();
+    setAuthStatus('Email login complete');
+    setSignatureStatus('Signature status: ready to sign.');
+    setTransactionStatus('Transaction status: ready to send.');
+    appendLog(`Wallet ready: ${activeWallet.address}`);
+    return true;
+  }, [appendLog, clearExpiredSessionState, omsWallet]);
 
   const finishOidcRedirectSignIn = useCallback(
     async (callbackUrl: string) => {
@@ -662,7 +654,7 @@ export default function App() {
               );
               break;
             }
-            if (!(await activateWallet({ wallet: result.result.wallet }))) {
+            if (!activateWallet()) {
               break;
             }
             setAuthStatus('Google redirect login complete');
@@ -672,7 +664,6 @@ export default function App() {
             break;
           case 'noPendingAuth':
             setAuthStatus('No pending Google redirect sign-in.');
-            await refreshSession();
             break;
           case 'notOidcRedirectCallback':
             setAuthStatus('Ignored non-auth redirect.');
@@ -685,7 +676,7 @@ export default function App() {
         handlingRedirectUrlRef.current = null;
       }
     },
-    [activateWallet, appendLog, omsWallet, refreshSession]
+    [activateWallet, appendLog, omsWallet]
   );
 
   const selectNetwork = useCallback(
@@ -712,9 +703,9 @@ export default function App() {
 
         setNetworks(supportedNetworks);
         setSelectedChainId(String(supportedNetworks[0]?.id ?? 80002));
-        const nextSession = await refreshSession();
-        if (nextSession?.walletAddress) {
-          appendLog(`Wallet ready: ${nextSession.walletAddress}`);
+        const restoredAddress = showRestoredSession();
+        if (restoredAddress) {
+          appendLog(`Wallet ready: ${restoredAddress}`);
         }
         setSdkReady(true);
       });
@@ -727,7 +718,7 @@ export default function App() {
     return () => {
       disposed = true;
     };
-  }, [appendLog, omsWallet, refreshSession, runAction]);
+  }, [appendLog, omsWallet, runAction, showRestoredSession]);
 
   useEffect(() => {
     if (!sdkReady) return undefined;
@@ -818,7 +809,7 @@ export default function App() {
           return;
         }
 
-        await activateWallet({ wallet: authResult.wallet });
+        activateWallet();
       },
       (error) => {
         setAuthStatus(`Code confirmation failed: ${describeError(error)}`);
@@ -867,7 +858,6 @@ export default function App() {
     runAction('Cancel email code step', async () => {
       await omsWallet.wallet.signOut();
       clearExpiredSessionState();
-      setSession(SIGNED_OUT_SESSION);
       setCode('');
       setPendingWalletSelection(null);
       setAuthStage('email');
@@ -882,7 +872,8 @@ export default function App() {
       'Select wallet',
       async () => {
         setAuthStatus('Selecting wallet...');
-        await activateWallet(await selection.selectWallet(wallet.id));
+        await selection.selectWallet(wallet.id);
+        activateWallet();
       },
       (error) => {
         setAuthStatus(`Wallet selection failed: ${describeError(error)}`);
@@ -897,7 +888,8 @@ export default function App() {
       'Create wallet',
       async () => {
         setAuthStatus('Creating wallet...');
-        await activateWallet(await selection.createAndSelectWallet());
+        await selection.createAndSelectWallet();
+        activateWallet();
       },
       (error) => {
         setAuthStatus(`Wallet creation failed: ${describeError(error)}`);
@@ -909,7 +901,6 @@ export default function App() {
     runAction('Logout', async () => {
       await omsWallet.wallet.signOut();
       clearExpiredSessionState();
-      setSession(SIGNED_OUT_SESSION);
       setAuthStage('email');
       setPendingWalletSelection(null);
       setAuthStatus('Waiting for sign-in.');

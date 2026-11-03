@@ -7,8 +7,8 @@
     {
       "label": "Authentication and sessions",
       "symbols": [
-        "OMSWalletClient.getActiveWallet",
-        "OMSWalletClient.getSession",
+        "OMSWalletClient.activeWallet",
+        "OMSWalletClient.session",
         "OMSWalletClient.onSessionChange",
         "OMSWalletClient.startEmailAuth",
         "OMSWalletClient.completeEmailAuth",
