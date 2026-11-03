@@ -2,6 +2,8 @@
 
 This bare React Native app exercises the main OMS Wallet flows on iOS and Android. It includes email authentication, Google ID-token authentication, OMS Google and Apple redirect authentication, wallet selection, signing, and transactions.
 
+After sign-in, switch between EVM, Solana, and Tron wallets; the app uses an existing wallet of that type or creates one. The Solana and Tron panels load balances, sign and verify messages, and send transfers on Solana Devnet or Mainnet and Tron Nile or Mainnet, including a TRC-20 USDT transfer on Tron. Fund the wallet on the test network first, and send to another address: the wallet API rejects transfers to the sending wallet.
+
 ## Run the App
 
 Install the workspace dependencies from the repository root:
