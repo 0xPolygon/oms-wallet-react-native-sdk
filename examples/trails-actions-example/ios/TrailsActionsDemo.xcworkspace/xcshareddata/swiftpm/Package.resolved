@@ -1,0 +1,15 @@
+{
+  "originHash" : "02c514b553318de47f9619777ff097c1162220c7b3e94860f101334db47b64b9",
+  "pins" : [
+    {
+      "identity" : "swift-sdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/0xsequence/swift-sdk.git",
+      "state" : {
+        "revision" : "48c2ffbb8e8f325c92a6b4e81df92875fd14ff24",
+        "version" : "0.4.0"
+      }
+    }
+  ],
+  "version" : 3
+}

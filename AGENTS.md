@@ -136,7 +136,7 @@ automated unit tests in `test/`.
 - Publishing is CI-only through Changesets and npm OIDC staged publishing. An npm maintainer must
   approve each stage with 2FA. See `PUBLISHING.md`.
 - The npm wrapper version is independent of the native SDK version. Swift and Kotlin dependency
-  pins are independent (currently Kotlin 0.3.2, Swift 0.3.1); `yarn check:native-versions` only
+  pins are independent (currently Kotlin 0.4.0, Swift 0.4.0); `yarn check:native-versions` only
   requires each to be an exact version. Do not manufacture native releases to match npm-only changes.
 - Yarn rejects registry releases newer than 24 hours except for approved first-party scopes, and
   blocks third-party lifecycle scripts and Git-hosted dependencies unless explicitly approved.
@@ -185,7 +185,8 @@ Android and iOS PR checks pass before merging; validate locally when you need fa
   `yarn expo-example:install` from the root to install dependencies, then run Expo example scripts
   from the root.
 - `yarn prepare` regenerates `lib/` — if builds look stale, run `yarn clean && yarn prepare`.
-- The podspec resolves `oms-wallet-swift-sdk` and the Android module resolves
+- The podspec pulls the Swift SDK's `OMSWallet` product from `0xsequence/swift-sdk` with Swift
+  Package Manager (React Native's `spm_dependency`), and the Android module resolves
   `io.github.0xsequence:oms-wallet-kotlin-sdk`. Native SDK pins live in the podspec (Swift)
   and `android/build.gradle` (Kotlin); update whichever dependency is actually changing.
 - Turbo cache can mask failures: if something seems wrong, run with `--force` to skip the cache.

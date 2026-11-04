@@ -27,6 +27,10 @@ React Native autolinking connects the native modules. Install the iOS pods after
 npx pod-install
 ```
 
+On iOS, the module pulls the Swift SDK with Swift Package Manager through React Native's
+`spm_dependency`. Keep the `react_native_post_install` call in your `Podfile`'s `post_install` hook,
+as in the React Native template; Expo adds it for you.
+
 ## Expo
 
 Install the package in an app on Expo SDK 56 or newer:
@@ -57,6 +61,8 @@ const omsWallet = new OMSWallet({
 });
 ```
 
+The constructor creates the native client synchronously and restores a saved session, so `omsWallet.wallet.activeWallet` is usually set as soon as it returns. On iOS, when the app launches in the background while the device is locked, the keychain cannot be read yet: the session is restored once the device is unlocked, and `onSessionChange` then reports a `signedIn` change. The constructor throws `OMSWalletError` when the client cannot be created, for example for an invalid publishable key.
+
 Constructing another `OMSWallet` replaces the native client. Calls on the earlier instance then throw `This OMSWallet instance has been replaced`. Create the instance once in its own module, as above, and import it where needed. Fast Refresh re-runs a module that exports non-component values when you edit it, so editing that module creates a new instance; reload the app after changing it.
 
 ## Authenticate With Email
@@ -64,17 +70,58 @@ Constructing another `OMSWallet` replaces the native client. Calls on the earlie
 ```ts
 await omsWallet.wallet.startEmailAuth({
   email: 'player@example.com',
-  sessionLifetimeSeconds: 604800,
 });
 
-const { walletAddress } = await omsWallet.wallet.completeEmailAuth({
+const { wallet } = await omsWallet.wallet.completeEmailAuth({
   code: '<otp-code>',
 });
 
-console.log(walletAddress);
+console.log(wallet?.address);
 ```
 
-Automatic wallet selection is the default. Handle `walletSelection` only when an authentication call requests manual selection.
+Automatic wallet selection is the default. Handle `walletSelection` only when an authentication call requests manual selection. When the user owns no wallet of the requested type but has a claimable one, automatic selection claims it.
+
+## Keep Your UI In Sync
+
+`omsWallet.wallet.activeWallet` and `omsWallet.wallet.session` are read synchronously from the native SDK, so they are current as soon as a sign-in or wallet change returns. They return the same frozen objects until the active wallet or session changes. `onSessionChange` calls your listener after every change and returns a function that removes it:
+
+```ts
+const unsubscribe = omsWallet.wallet.onSessionChange((event) => {
+  render(event.activeWallet, event.session);
+  if (event.reason === 'expired') {
+    showSignIn(event.expiredSession.session.auth);
+  }
+});
+render(omsWallet.wallet.activeWallet, omsWallet.wallet.session);
+
+// During cleanup
+unsubscribe();
+```
+
+`reason` is `signedIn`, `walletChanged`, `expiryUpdated`, `signedOut`, or `expired`. A listener added while signed out first receives the last `expired` change, until a sign-in starts or the user signs out.
+
+In React, `useSyncExternalStore` keeps a component in sync:
+
+```ts
+import { useCallback, useSyncExternalStore } from 'react';
+
+function useOMSWalletSession(wallet: OMSWallet['wallet']) {
+  const subscribe = useCallback(
+    (onChange: () => void) => wallet.onSessionChange(onChange),
+    [wallet]
+  );
+  const activeWallet = useSyncExternalStore(subscribe, () => wallet.activeWallet);
+  const session = useSyncExternalStore(subscribe, () => wallet.session);
+  return { activeWallet, session };
+}
+```
+
+## Sessions
+
+- **Lifetime.** Sign-in requests 180 days (`DEFAULT_SESSION_LIFETIME_SECONDS`, also the maximum) unless you pass `sessionLifetimeSeconds`. The wallet API extends `session.expiresAt` with use, up to that lifetime, and ends a session after about 10 days without use. Pass a shorter `sessionLifetimeSeconds` for a hard limit.
+- **Expiry.** When `expiresAt` passes, a session past its requested lifetime ends at once. Otherwise the SDK asks the wallet API, once the app is in the foreground, and reports `expired` only if the session ended.
+- **Timeouts.** Requests signed with the session go one at a time and fail with `OMS_REQUEST_FAILED` after 30 seconds, counting the time spent waiting behind other requests. A transaction that times out after it was sent fails with `OMS_TRANSACTION_EXECUTION_UNCONFIRMED`: check its status before sending it again.
+- **Signing key.** On an iOS device, the session signing key is generated in the Secure Enclave and cannot be exported. If the Secure Enclave cannot create it, sign-in fails with `OMS_STORAGE_ERROR`. Android keeps the key in the Android Keystore.
 
 ## Authenticate With An OIDC ID Token
 
@@ -161,6 +208,34 @@ await omsWallet.wallet.sendSolanaTransfer({
 
 `amount` uses the asset's smallest unit. `importWallet` accepts an Ethereum private key as 32 raw bytes or 64 hexadecimal digits, optionally prefixed with `0x`. Solana imports accept a 32-byte seed or 64-byte keypair as raw bytes, or the base58 encoding of either. The native SDK encrypts the key locally for the attested wallet-import transport.
 
+## Tron Wallets
+
+Create or import Tron wallets, sign messages and TIP-712 typed data, and send TRX or call TRC-20 contracts:
+
+```ts
+import { TronNetworks } from '@polygonlabs/oms-wallet-react-native';
+
+await omsWallet.wallet.createWallet({ walletType: 'tron' });
+
+await omsWallet.wallet.sendTronTransaction({
+  network: TronNetworks.nile,
+  to: '<tron-address>',
+  value: '1000000',
+});
+
+await omsWallet.wallet.callTronContract({
+  network: TronNetworks.nile,
+  contractAddress: '<trc20-contract-address>',
+  method: 'transfer',
+  args: [
+    { type: 'address', value: '<tron-address>' },
+    { type: 'uint256', value: '1000000' },
+  ],
+});
+```
+
+Tron addresses use Base58Check (`T…`), and `value` is in sun (1 TRX = 1,000,000 sun). Tron transactions always run in native mode.
+
 ## Remote Access
 
 Inspect a remote credential before approval, authorize bounded smart-session grants, inspect their usage, and revoke direct or remote access through the methods on `omsWallet.wallet`. See the [Public TypeScript API](./API.md) for the exact grant and response types.
@@ -168,17 +243,24 @@ Inspect a remote credential before approval, authorize bounded smart-session gra
 ## Query The Indexer
 
 ```ts
-const walletAddress = await omsWallet.wallet.getWalletAddress();
+const activeWallet = omsWallet.wallet.activeWallet;
 
-const balances = await omsWallet.indexer.getBalances({
-  walletAddress: walletAddress!,
-  networks: [Networks.polygon],
-  includeMetadata: true,
-});
+if (activeWallet?.type === 'ethereum') {
+  const balances = await omsWallet.indexer.getBalances({
+    walletAddress: activeWallet.address,
+    networks: [Networks.polygon],
+    includeMetadata: true,
+  });
+}
 
 const solanaBalances = await omsWallet.indexer.getSolanaBalances({
   walletAddress: '<solana-address>',
   networks: [SolanaNetworks.devnet],
+});
+
+const tronBalances = await omsWallet.indexer.getTronBalances({
+  walletAddress: '<tron-address>',
+  networks: [TronNetworks.nile],
 });
 ```
 
@@ -186,7 +268,7 @@ const solanaBalances = await omsWallet.indexer.getSolanaBalances({
 
 - [React Native SDK guide](https://docs.polygon.technology/wallets/sdk/react-native/quickstart)
 - [Public TypeScript API](./API.md)
-- [Migrate from 0.2.0 to 0.3.1](./MIGRATION.md)
+- [Migration guide](./MIGRATION.md)
 
 ## Examples
 

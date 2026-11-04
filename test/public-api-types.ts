@@ -3,7 +3,8 @@ import type {
   FeeToken,
   GetBalancesParams,
   NativeTokenBalance,
-  OMSWalletSessionState,
+  OMSWalletExpiredSession,
+  OMSWalletSessionChangeEvent,
   SendTransactionParams,
   SendTransactionResponse,
   StartEmailAuthParams,
@@ -13,6 +14,7 @@ import type {
   AccessGrant,
   ImportWalletParams,
   SolanaBalance,
+  TronBalance,
   WalletAccount,
 } from '../src/types';
 import type {
@@ -20,6 +22,7 @@ import type {
   OMSWalletErrorCode,
   OMSWalletUpstreamError,
 } from '../src/errors';
+import type { OMSWallet } from '../src/index';
 
 type Assert<T extends true> = T;
 type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
@@ -32,7 +35,7 @@ export type PublicInputsExcludeNull = Assert<
 >;
 
 export type PublicOutputsExcludeNull = Assert<
-  ExcludesNull<OMSWalletSessionState['walletAddress']> &
+  ExcludesNull<OMSWalletExpiredSession['wallet']> &
     ExcludesNull<WalletAccount['reference']> &
     ExcludesNull<SendTransactionResponse['txnHash']> &
     ExcludesNull<ContractTokenBalance['contractAddress']> &
@@ -69,6 +72,32 @@ export function narrowSolanaBalance(balance: SolanaBalance): string {
   return mintAddress ?? balance.accountAddress;
 }
 
+export function narrowSessionChange(
+  change: OMSWalletSessionChangeEvent
+): string | undefined {
+  if (change.reason === 'expired') {
+    return change.expiredSession.expiredAt;
+  }
+  if (change.reason === 'signedOut') {
+    const activeWallet: undefined = change.activeWallet;
+    return activeWallet;
+  }
+  return change.session.expiresAt;
+}
+
+export function narrowTronBalance(balance: TronBalance): string {
+  if (balance.assetType === 'fungible-token') {
+    return balance.contractAddress;
+  }
+  const contractAddress: undefined = balance.contractAddress;
+  return contractAddress ?? balance.accountAddress;
+}
+
+export const tronWalletImport: ImportWalletParams = {
+  type: 'tron',
+  privateKey: new Uint8Array(32),
+};
+
 export const byteWalletImport: ImportWalletParams = {
   type: 'solana',
   privateKey: new Uint8Array(32),
@@ -98,3 +127,25 @@ export type AttestationErrorCodeIsPublic = Assert<
     ? true
     : false
 >;
+
+export type WalletAddressAlreadyImportedCodeIsPublic = Assert<
+  'OMS_WALLET_ADDRESS_ALREADY_IMPORTED' extends OMSWalletErrorCode
+    ? true
+    : false
+>;
+
+// The session is read synchronously, and onSessionChange returns the unsubscribe
+// function, so both plug into React's useSyncExternalStore.
+export function readSessionSynchronously(
+  wallet: OMSWallet['wallet']
+): string | undefined {
+  const activeWallet: WalletAccount | undefined = wallet.activeWallet;
+  const expiresAt: string | undefined = wallet.session?.expiresAt;
+  return activeWallet?.address ?? expiresAt;
+}
+
+export function useSyncExternalStoreSubscribe(
+  wallet: OMSWallet['wallet']
+): (onStoreChange: () => void) => () => void {
+  return (onStoreChange) => wallet.onSessionChange(onStoreChange);
+}

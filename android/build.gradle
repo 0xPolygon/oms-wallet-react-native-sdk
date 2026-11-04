@@ -4,7 +4,7 @@ buildscript {
     minSdkVersion: 24,
     compileSdkVersion: 36,
     targetSdkVersion: 36,
-    omsWalletKotlinSdkVersion: "0.3.2",
+    omsWalletKotlinSdkVersion: "0.4.0",
     kotlinxCoroutinesVersion: "1.11.0",
     kotlinxSerializationJsonVersion: "1.8.1"
   ]

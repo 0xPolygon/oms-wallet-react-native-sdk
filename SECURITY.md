@@ -14,8 +14,8 @@ what to include, and response times.
 
 | Version | Supported |
 |---|---|
-| 0.3.x | ✅ Supported |
-| Earlier than 0.3.0 | ❌ Not supported |
+| 0.4.x | ✅ Supported |
+| Earlier than 0.4.0 | ❌ Not supported |
 
 ## Scope
 

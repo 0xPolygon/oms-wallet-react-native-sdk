@@ -1,6 +1,6 @@
-import type { Network, SolanaNetwork } from './networks';
+import type { Network, SolanaNetwork, TronNetwork } from './networks';
 
-export type WalletType = 'ethereum' | 'solana';
+export type WalletType = 'ethereum' | 'solana' | 'tron';
 
 export type WalletKeyOrigin = 'enclave' | 'imported';
 
@@ -26,16 +26,70 @@ export type OMSWalletSessionAuth =
   | OMSWalletEmailSessionAuth
   | OMSWalletOidcSessionAuth;
 
-export type OMSWalletSessionState = {
-  walletAddress: string | undefined;
-  expiresAt: string | undefined;
-  auth: OMSWalletSessionAuth | undefined;
+/** Expiry and auth metadata for the active session. */
+export type OMSWalletSession = {
+  /**
+   * The current session expiry. The wallet API extends it with use, up to the
+   * lifetime requested at sign-in, and the SDK refreshes it.
+   */
+  expiresAt: string;
+  auth: OMSWalletSessionAuth;
 };
 
-export type OMSWalletSessionExpiredEvent = {
-  session: OMSWalletSessionState;
+/** A session that expired, as reported by an `expired` session change. */
+export type OMSWalletExpiredSession = {
+  /**
+   * The wallet that was active when the session expired. `undefined` when the
+   * credential expired while a manual wallet selection was still pending.
+   */
+  wallet: WalletAccount | undefined;
+  session: OMSWalletSession;
+  /** When the session ended. */
   expiredAt: string;
 };
+
+/**
+ * Why the active wallet or session changed.
+ *
+ * - `signedIn`: a wallet became active, by a sign-in or by restoring a saved
+ *   session once the device was unlocked.
+ * - `walletChanged`: another wallet of the same sign-in became active.
+ * - `expiryUpdated`: `session.expiresAt` moved. Safe to ignore unless you show
+ *   the expiry.
+ * - `signedOut`: there is no session any more and it did not expire.
+ * - `expired`: the session expired, or the wallet API no longer accepts it.
+ */
+export type OMSWalletSessionChangeReason =
+  | 'signedIn'
+  | 'walletChanged'
+  | 'expiryUpdated'
+  | 'signedOut'
+  | 'expired';
+
+export type OMSWalletSessionChangeListener = (
+  event: OMSWalletSessionChangeEvent
+) => void;
+
+/** The state right after a session change. */
+export type OMSWalletSessionChangeEvent =
+  | {
+      reason: 'signedIn' | 'walletChanged' | 'expiryUpdated';
+      activeWallet: WalletAccount;
+      session: OMSWalletSession;
+      expiredSession?: undefined;
+    }
+  | {
+      reason: 'signedOut';
+      activeWallet: undefined;
+      session: undefined;
+      expiredSession?: undefined;
+    }
+  | {
+      reason: 'expired';
+      activeWallet: undefined;
+      session: undefined;
+      expiredSession: OMSWalletExpiredSession;
+    };
 
 export type OMSWalletParams = {
   publishableKey: string;
@@ -50,7 +104,6 @@ export type WalletAccount = {
 };
 
 export type WalletActivationResult = {
-  walletAddress: string;
   wallet: WalletAccount;
 };
 
@@ -63,25 +116,34 @@ export type WalletCredential = {
 export type PendingWalletSelection = {
   walletType: WalletType;
   wallets: WalletAccount[];
+  /** Preallocated wallets of `walletType` that the signed-in user can claim. */
+  claimableWallets: WalletAccount[];
   credential: WalletCredential;
   selectWallet(walletId: string): Promise<WalletActivationResult>;
   createAndSelectWallet(reference?: string): Promise<WalletActivationResult>;
+  /** Claims one of `claimableWallets` and activates it. */
+  claimAndSelectWallet(walletId: string): Promise<WalletActivationResult>;
 };
 
 export type CompleteAuthResult =
   | {
       type: 'walletSelected';
-      walletAddress: string;
       wallet: WalletAccount;
       wallets: WalletAccount[];
+      /**
+       * Preallocated wallets the signed-in user can still claim, of every
+       * wallet type. Excludes a wallet claimed during this sign-in.
+       */
+      claimableWallets: WalletAccount[];
       credential: WalletCredential;
       pendingSelection?: undefined;
     }
   | {
       type: 'walletSelection';
-      walletAddress: undefined;
       wallet: undefined;
       wallets: WalletAccount[];
+      /** Preallocated wallets of the requested type that the user can claim. */
+      claimableWallets: WalletAccount[];
       credential: WalletCredential;
       pendingSelection: PendingWalletSelection;
     };
@@ -196,6 +258,12 @@ export type ImportWalletParams =
       type: 'solana';
       privateKey: string | Uint8Array;
       reference?: string;
+    }
+  | {
+      type: 'tron';
+      /** A secp256k1 private key: 32 raw bytes or 64 hex characters. */
+      privateKey: string | Uint8Array;
+      reference?: string;
     };
 
 export type WalletImportRecipientKey = {
@@ -212,7 +280,7 @@ export type EncryptedWalletImportKeyMaterial = {
 };
 
 export type ImportEncryptedWalletParams = {
-  type: WalletType;
+  walletType: WalletType;
   keyMaterial: EncryptedWalletImportKeyMaterial;
   reference?: string;
 };
@@ -229,6 +297,15 @@ export type SignMessageParams = {
 
 export type SignSolanaMessageParams = {
   message: string;
+};
+
+export type SignTronMessageParams = {
+  message: string;
+};
+
+export type SignTronTypedDataParams = {
+  /** TIP-712 typed data. Address values may be Base58Check (`T…`). */
+  typedData: unknown;
 };
 
 export type CallContractArg = {
@@ -291,8 +368,18 @@ export type FeeOptionSelection = {
   index?: number;
 };
 
+export type SortBy = {
+  column: string;
+  order: 'DESC' | 'ASC';
+};
+
 export type TokenBalancesPage = {
   page: number;
+  /** Cursor fields to pass back in the next page request. */
+  column?: string;
+  before?: unknown;
+  after?: unknown;
+  sort?: SortBy[];
   pageSize: number;
   more: boolean;
 };
@@ -421,9 +508,41 @@ export type SendSolanaTransferParams = {
   statusPolling?: TransactionStatusPollingOptions;
 };
 
+/**
+ * A Tron transaction. Tron wallets always execute in native mode.
+ *
+ * Omitting `data` sends a plain TRX transfer. Passing `data` (including `'0x'`)
+ * makes the transaction a contract call.
+ */
+export type SendTronTransactionParams = {
+  network: TronNetwork;
+  /** Base58Check recipient address (`T…`). */
+  to: string;
+  /** Amount in sun (1 TRX = 1,000,000 sun). Defaults to `'0'`. */
+  value?: string;
+  data?: string;
+  selectFeeOption?: FeeOptionSelector;
+  waitForStatus?: boolean;
+  statusPolling?: TransactionStatusPollingOptions;
+};
+
+/** A Tron contract call, ABI-encoded by the wallet service. */
+export type CallTronContractParams = {
+  network: TronNetwork;
+  /** Base58Check contract address (`T…`). */
+  contractAddress: string;
+  /** Function name only, e.g. `'transfer'`. */
+  method: string;
+  args?: CallContractArg[];
+  selectFeeOption?: FeeOptionSelector;
+  waitForStatus?: boolean;
+  statusPolling?: TransactionStatusPollingOptions;
+};
+
 export type CallContractParams = {
   network: Network;
   contractAddress: string;
+  /** Function name only, e.g. `'transfer'`. */
   method: string;
   args?: CallContractArg[];
   mode?: TransactionMode;
@@ -444,6 +563,10 @@ export type MetadataOptions = {
 
 export type TokenBalancesPageRequest = {
   page?: number;
+  column?: string;
+  before?: unknown;
+  after?: unknown;
+  sort?: SortBy[];
   pageSize?: number;
 };
 
@@ -508,6 +631,63 @@ export type SolanaBalancesResult = {
   errors: SolanaNetworkError[];
 };
 
+export type TronVerificationStatus = 'verified' | 'unverified' | 'unknown';
+
+type TronBalanceBase = {
+  network: TronNetwork;
+  accountAddress: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  /** Raw balance in the token's base units (sun for TRX). */
+  balance: string;
+  formattedBalance: string;
+  imageUrl?: string;
+  metadataUri?: string;
+  verificationStatus: TronVerificationStatus;
+  verificationSource: string;
+  priceUSD?: string;
+  balanceUSD?: string;
+};
+
+export type TronNativeBalance = TronBalanceBase & {
+  assetType: 'native';
+  tokenStandard?: undefined;
+  contractAddress?: undefined;
+};
+
+export type TronFungibleTokenBalance = TronBalanceBase & {
+  assetType: 'fungible-token';
+  tokenStandard: 'trc20';
+  contractAddress: string;
+};
+
+export type TronBalance = TronNativeBalance | TronFungibleTokenBalance;
+
+export type TronNetworkError = {
+  network: TronNetwork;
+  reason: string;
+};
+
+export type GetTronBalancesParams = {
+  /** Base58Check wallet address (`T…`). */
+  walletAddress: string;
+  /** Defaults to Tron mainnet and Nile. */
+  networks?: TronNetwork[];
+  includeMetadata?: boolean;
+  omitNativeBalances?: boolean;
+  /** Only return these TRC-20 contracts (`T…`). */
+  contractAddresses?: string[];
+  /** Exclude these TRC-20 contracts (`T…`). */
+  excludedContractAddresses?: string[];
+};
+
+export type TronBalancesResult = {
+  status: number;
+  balances: TronBalance[];
+  errors: TronNetworkError[];
+};
+
 export type GetBalancesParams = {
   walletAddress: string;
   networks?: Network[];
@@ -569,17 +749,37 @@ export type GetTransactionHistoryParams = {
 
 export type IsValidMessageSignatureParams = {
   network: Network;
+  /** Address to verify against. Omit to use the active Ethereum wallet's address. */
+  walletAddress?: string;
   message: string;
   signature: string;
 };
 
 export type IsValidSolanaMessageSignatureParams = {
+  /** Address to verify against. Omit to use the active Solana wallet's address. */
+  walletAddress?: string;
   message: string;
   signature: string;
 };
 
 export type IsValidTypedDataSignatureParams = {
   network: Network;
+  /** Address to verify against. Omit to use the active Ethereum wallet's address. */
+  walletAddress?: string;
+  typedData: unknown;
+  signature: string;
+};
+
+export type IsValidTronMessageSignatureParams = {
+  /** Base58Check address (`T…`). Omit to use the active Tron wallet's address. */
+  walletAddress?: string;
+  message: string;
+  signature: string;
+};
+
+export type IsValidTronTypedDataSignatureParams = {
+  /** Base58Check address (`T…`). Omit to use the active Tron wallet's address. */
+  walletAddress?: string;
   typedData: unknown;
   signature: string;
 };

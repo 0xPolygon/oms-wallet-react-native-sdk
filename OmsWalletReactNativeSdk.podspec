@@ -16,7 +16,11 @@ Pod::Spec.new do |s|
   s.source_files = "ios/**/*.{h,m,mm,swift,cpp}"
   s.private_header_files = "ios/**/*.h"
   s.swift_version = "6.0"
-  s.dependency "oms-wallet-swift-sdk", "0.3.1"
+  spm_dependency(s,
+    url: "https://github.com/0xsequence/swift-sdk.git",
+    requirement: { kind: "exactVersion", version: "0.4.0" },
+    products: ["OMSWallet"]
+  )
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES"
   }

@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import type { ViewStyle } from 'react-native';
@@ -47,8 +48,11 @@ import {
   OMSWallet,
   Networks,
   OmsRelayOidcProviders,
-  type OMSWalletSessionExpiredEvent,
-  type OMSWalletSessionState,
+  type OMSWalletExpiredSession,
+  type OMSWalletSession,
+  type OMSWalletSessionAuth,
+  type OMSWalletSessionChangeEvent,
+  type WalletAccount,
   type Network,
   type SendTransactionResponse,
 } from '@polygonlabs/oms-wallet-react-native';
@@ -158,11 +162,49 @@ const SIGNED_OUT_BALANCES: BalanceState = {
   usdcRaw: '0',
   status: 'Sign in to load balances.',
 };
-const SIGNED_OUT_SESSION: OMSWalletSessionState = {
+/** The wallet session as the demo shows it. */
+type DemoSessionState = {
+  walletAddress: string | undefined;
+  expiresAt: string | undefined;
+  auth: OMSWalletSessionAuth | undefined;
+};
+const SIGNED_OUT_SESSION: DemoSessionState = {
   walletAddress: undefined,
   expiresAt: undefined,
   auth: undefined,
 };
+
+function demoSessionState(
+  activeWallet: WalletAccount | undefined,
+  session: OMSWalletSession | undefined
+): DemoSessionState {
+  if (activeWallet == null || session == null) {
+    return SIGNED_OUT_SESSION;
+  }
+  return {
+    walletAddress: activeWallet.address,
+    expiresAt: session.expiresAt,
+    auth: session.auth,
+  };
+}
+
+// The SDK's session, kept in sync: re-renders on every session change, and
+// `activeWallet` and `session` return the same objects until they change.
+function useWalletSession(wallet: OMSWallet['wallet']): DemoSessionState {
+  const subscribe = useCallback(
+    (onChange: () => void) => wallet.onSessionChange(onChange),
+    [wallet]
+  );
+  const activeWallet = useSyncExternalStore(
+    subscribe,
+    () => wallet.activeWallet
+  );
+  const walletSession = useSyncExternalStore(subscribe, () => wallet.session);
+  return useMemo(
+    () => demoSessionState(activeWallet, walletSession),
+    [activeWallet, walletSession]
+  );
+}
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
@@ -639,7 +681,7 @@ function requireText(value: string, label: string): string {
 }
 
 function expiredSessionEmail(
-  event: OMSWalletSessionExpiredEvent | null
+  event: OMSWalletExpiredSession | null
 ): string | undefined {
   const email = event == null ? undefined : sessionEmail(event.session)?.trim();
   return email || undefined;
@@ -730,11 +772,13 @@ function formatTokenAmount(
   }
 }
 
-function sessionEmail(session: OMSWalletSessionState): string | undefined {
+function sessionEmail(session: {
+  auth: OMSWalletSessionAuth | undefined;
+}): string | undefined {
   return session.auth?.email;
 }
 
-function formatSessionAuth(session: OMSWalletSessionState): string {
+function formatSessionAuth(session: DemoSessionState): string {
   if (session.auth?.type === 'email') return 'Email';
   if (session.auth?.type === 'oidc') {
     const provider =
@@ -1201,14 +1245,13 @@ export default function App() {
   );
   const [networks, setNetworks] = useState<Network[]>([]);
   const [sdkReady, setSdkReady] = useState(false);
-  const [session, setSession] =
-    useState<OMSWalletSessionState>(SIGNED_OUT_SESSION);
+  const session = useWalletSession(omsWallet.wallet);
   const [authStage, setAuthStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [authStatus, setAuthStatus] = useState('Waiting for sign-in.');
   const [expiredSessionEvent, setExpiredSessionEvent] =
-    useState<OMSWalletSessionExpiredEvent | null>(null);
+    useState<OMSWalletExpiredSession | null>(null);
   const [swapPolAmount, setSwapPolAmount] = useState(DEFAULT_SWAP_POL_AMOUNT);
   const [depositUsdcAmount, setDepositUsdcAmount] = useState(
     DEFAULT_DEPOSIT_USDC_AMOUNT
@@ -1271,17 +1314,17 @@ export default function App() {
     setEarnStatus('Swap and Deposit status: waiting to prepare.');
   }, []);
 
-  const refreshSession = useCallback(async () => {
-    const nextSession = await omsWallet.wallet.getSession();
-    setSession(nextSession);
-    if (nextSession.walletAddress) {
+  // Shows a session restored at startup. Returns its wallet address, if any.
+  const showRestoredSession = useCallback(() => {
+    const activeWallet = omsWallet.wallet.activeWallet;
+    if (activeWallet) {
       setExpiredSessionEvent(null);
       setAuthStatus('Restored persisted wallet session');
       setSwapStatus('Swap status: ready to prepare.');
       setDepositStatus('Deposit status: ready to prepare.');
       setEarnStatus('Swap and Deposit status: ready to prepare.');
     }
-    return nextSession;
+    return activeWallet?.address;
   }, [omsWallet]);
 
   const clearExpiredSessionState = useCallback(() => {
@@ -1289,11 +1332,10 @@ export default function App() {
   }, []);
 
   const handleSessionExpired = useCallback(
-    (event: OMSWalletSessionExpiredEvent) => {
+    (event: OMSWalletExpiredSession) => {
       const emailHint = expiredSessionEmail(event);
 
       setExpiredSessionEvent(event);
-      setSession(SIGNED_OUT_SESSION);
       setAuthStage('email');
       setCode('');
       setAuthStatus(
@@ -1307,10 +1349,26 @@ export default function App() {
       setBrowserUrl(null);
       resetActionState();
       appendLog(
-        `Wallet session expired at ${event.expiredAt}: wallet=${event.session.walletAddress ?? 'none'} email=${sessionEmail(event.session) ?? 'none'}`
+        `Wallet session expired at ${event.expiredAt}: wallet=${event.wallet?.address ?? 'none'} email=${sessionEmail(event.session) ?? 'none'}`
       );
     },
     [appendLog, resetActionState]
+  );
+
+  // The wallet and session on screen come from useWalletSession; this only
+  // shows the sign-in prompt when a session expires.
+  const handleSessionChange = useCallback(
+    (event: OMSWalletSessionChangeEvent) => {
+      if (event.reason === 'expired') {
+        handleSessionExpired(event.expiredSession);
+      }
+    },
+    [handleSessionExpired]
+  );
+
+  useEffect(
+    () => omsWallet.wallet.onSessionChange(handleSessionChange),
+    [handleSessionChange, omsWallet]
   );
 
   const runAction = useCallback(
@@ -1353,32 +1411,30 @@ export default function App() {
           case 'completed': {
             if (result.result.type === 'walletSelection') {
               const existingWallet = result.result.pendingSelection.wallets[0];
-              const activation = existingWallet
-                ? await result.result.pendingSelection.selectWallet(
-                    existingWallet.id
-                  )
-                : await result.result.pendingSelection.createAndSelectWallet();
-              const nextSession = await refreshSession();
-              setCode('');
-              setAuthStage('email');
-              setAuthStatus('Google redirect login complete');
-              appendLog(
-                `Google redirect wallet selected: ${nextSession.walletAddress ?? activation.walletAddress}`
-              );
+              if (existingWallet) {
+                await result.result.pendingSelection.selectWallet(
+                  existingWallet.id
+                );
+              } else {
+                await result.result.pendingSelection.createAndSelectWallet();
+              }
+            }
+            // Read synchronously: current as soon as the sign-in returns. When the
+            // session already ended, its expiry change shows the sign-in prompt.
+            const activeWallet = omsWallet.wallet.activeWallet;
+            if (activeWallet == null) {
               break;
             }
-            const nextSession = await refreshSession();
-            const address =
-              nextSession.walletAddress ?? result.result.walletAddress;
             setCode('');
             setAuthStage('email');
             setAuthStatus('Google redirect login complete');
-            appendLog(`Google redirect sign-in complete: ${address}`);
+            appendLog(
+              `Google redirect sign-in complete: ${activeWallet.address}`
+            );
             break;
           }
           case 'noPendingAuth':
             setAuthStatus('No pending Google redirect sign-in.');
-            await refreshSession();
             break;
           case 'notOidcRedirectCallback':
             setAuthStatus('Ignored non-auth redirect.');
@@ -1389,7 +1445,7 @@ export default function App() {
         handlingRedirectUrlRef.current = null;
       }
     },
-    [appendLog, omsWallet, refreshSession]
+    [appendLog, omsWallet]
   );
 
   const refreshBalances = useCallback(
@@ -1646,9 +1702,9 @@ export default function App() {
         }
         appendLog('Polygon network is available.');
 
-        const nextSession = await refreshSession();
-        if (nextSession.walletAddress) {
-          appendLog(`Wallet ready: ${nextSession.walletAddress}`);
+        const restoredAddress = showRestoredSession();
+        if (restoredAddress) {
+          appendLog(`Wallet ready: ${restoredAddress}`);
         }
         setSdkReady(true);
       });
@@ -1661,13 +1717,10 @@ export default function App() {
     return () => {
       disposed = true;
     };
-  }, [appendLog, omsWallet, refreshSession, runAction]);
+  }, [appendLog, omsWallet, runAction, showRestoredSession]);
 
   useEffect(() => {
     if (!sdkReady) return undefined;
-
-    const sessionExpiredSubscription =
-      omsWallet.wallet.onSessionExpired(handleSessionExpired);
 
     const handleRedirectUrl = (url: string) => {
       if (!isDemoOidcRedirectUrl(url)) return;
@@ -1698,13 +1751,11 @@ export default function App() {
       });
 
     return () => {
-      sessionExpiredSubscription.remove();
       subscription.remove();
     };
   }, [
     appendLog,
     finishOidcRedirectSignIn,
-    handleSessionExpired,
     omsWallet.wallet,
     runAction,
     sdkReady,
@@ -1836,14 +1887,17 @@ export default function App() {
         await omsWallet.wallet.completeEmailAuth({
           code: requireText(code, 'Code'),
         });
-        const nextSession = await refreshSession();
+        // Read synchronously: current as soon as the sign-in returns. When the
+        // session already ended, its expiry change shows the sign-in prompt.
+        const activeWallet = omsWallet.wallet.activeWallet;
+        if (activeWallet == null) {
+          return;
+        }
         clearExpiredSessionState();
         setCode('');
         setAuthStage('email');
         setAuthStatus('Email login complete');
-        if (nextSession.walletAddress) {
-          appendLog(`Wallet ready: ${nextSession.walletAddress}`);
-        }
+        appendLog(`Wallet ready: ${activeWallet.address}`);
       },
       (error) => {
         setAuthStatus(`Verify error: ${describeError(error)}`);
@@ -1858,7 +1912,6 @@ export default function App() {
       setAuthStage('email');
       setCode('');
       setAuthStatus('Email sign-in cancelled.');
-      setSession(SIGNED_OUT_SESSION);
       resetActionState();
     });
   };
@@ -1867,7 +1920,6 @@ export default function App() {
     runAction('Sign out', async () => {
       await omsWallet.wallet.signOut();
       clearExpiredSessionState();
-      setSession(SIGNED_OUT_SESSION);
       setAuthStage('email');
       setCode('');
       setAuthStatus('Signed out.');
@@ -2257,8 +2309,7 @@ export default function App() {
                       <SessionDetail
                         label="Wallet"
                         value={
-                          expiredSessionEvent.session.walletAddress ??
-                          'Unavailable'
+                          expiredSessionEvent.wallet?.address ?? 'Unavailable'
                         }
                       />
                       <SessionDetail
